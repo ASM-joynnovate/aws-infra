@@ -1,0 +1,47 @@
+name: oidc-probe
+
+# SCP가 sts를 차단한 상태에서 GitHub OIDC가 동작하는지 실측한다.
+# 확인이 끝나면 이 워크플로와 AWS의 isb-oidc-probe 역할을 삭제한다.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 발급된 sub 클레임 확인
+        run: |
+          TOKEN=$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')
+          python3 - "$TOKEN" <<'PY'
+          import base64, json, sys
+          payload = sys.argv[1].split('.')[1]
+          payload += '=' * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          for k in ('sub', 'aud', 'repository', 'repository_owner', 'ref'):
+              print(f'{k:18} = {claims.get(k)}')
+          PY
+
+      - name: AWS 역할 assume 시도
+        id: creds
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::198252712951:role/isb-oidc-probe
+          aws-region: ap-northeast-2
+
+      - name: 판정
+        run: |
+          echo "assume 결과: ${{ steps.creds.outcome }}"
+          if [ "${{ steps.creds.outcome }}" = "success" ]; then
+            echo "OIDC 동작. CI에서 apply 가능"
+          else
+            echo "OIDC 불가. apply를 로컬 전용으로 설계해야 함"
+          fi

@@ -1,3 +1,3 @@
 import pulumi
 
-pulumi.export("placeholder", "joynnovate-infra skeleton ci-check")
+pulumi.export("placeholder", "joynnovate-infra skeleton ci-check2")

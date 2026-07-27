@@ -1,0 +1,45 @@
+name: pulumi preview
+
+on:
+  pull_request:
+    paths:
+      - infra/**
+      - .github/workflows/pulumi-preview.yml
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: pulumi-joynnovate-infra-prod
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::198252712951:role/jn-ci-preview
+          aws-region: ap-northeast-2
+
+      - uses: astral-sh/setup-uv@v9
+        with:
+          python-version: "3.14"
+          working-directory: infra
+          enable-cache: true
+
+      - uses: pulumi/actions@v7
+        with:
+          command: preview
+          stack-name: organization/joynnovate-infra/prod
+          work-dir: infra
+          refresh: true
+          diff: true
+          comment-on-pr: true
+          edit-pr-comment: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}

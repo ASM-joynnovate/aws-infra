@@ -1,0 +1,9 @@
+secretsprovider: awskms://alias/jn-pulumi-secrets?region=ap-northeast-2
+encryptedkey: AQICAHjo9WNG+uH3mklUd1LRM6/I0PC/GvT2vfK9gYdSsJB6mgHmiuD9hFe1YkKZnbRYiPTpAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMXa4bauE0NUUuV9RuAgEQgDvBSnC9B/8Fqe+1eI+iuQxPKxavCHKnVbNg760ua3BQezIolhk0/DLCjYqNkn2SvJA7ekMSVpnDCN8gfg==
+config:
+  aws:region: ap-northeast-2
+  aws:defaultTags:
+    tags:
+      Layer: bootstrap
+      ManagedBy: pulumi
+      Team: joynnovate

@@ -113,12 +113,9 @@ pulumi preview
 
 | 시점 | 동작 |
 | --- | --- |
-| PR | 두 프로젝트의 `pulumi preview` 결과를 PR 코멘트로 게시 |
-| main 머지 | `--expect-no-changes`로 실제 변경 여부 판정 |
-| 변경이 있는 프로젝트 | GitHub Environment의 required reviewer 승인 요청 |
+| PR | `pulumi preview` 결과를 PR 코멘트로 게시 |
+| Actions 탭에서 수동 실행 | GitHub Environment의 required reviewer 승인 요청 |
 | 승인 후 | `pulumi up --refresh` 실행 |
-
-변경이 없는 프로젝트에는 승인 요청이 나오지 않는다.
 
 적용은 `joynnovate-infra`가 끝난 뒤 `buddybird-app` 순으로 진행한다.
 

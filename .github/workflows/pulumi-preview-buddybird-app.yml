@@ -1,0 +1,45 @@
+name: pulumi preview buddybird-app
+
+on:
+  pull_request:
+    paths:
+      - buddybird-app/**
+      - .github/workflows/pulumi-preview-buddybird-app.yml
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: pulumi-buddybird-app-prod
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::198252712951:role/jn-ci-preview
+          aws-region: ap-northeast-2
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          working-directory: buddybird-app
+          enable-cache: true
+
+      - uses: pulumi/actions@v7
+        with:
+          command: preview
+          stack-name: organization/buddybird-app/prod
+          work-dir: buddybird-app
+          refresh: true
+          diff: true
+          comment-on-pr: true
+          edit-pr-comment: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,10 @@
+secretsprovider: awskms://alias/jn-pulumi-secrets?region=ap-northeast-2
+encryptedkey: AQICAHjo9WNG+uH3mklUd1LRM6/I0PC/GvT2vfK9gYdSsJB6mgGRqemMXfrxBEz4Ek5PS0EEAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMSa5Ftia9LhrveD0QAgEQgDvV4gpi5gVjuswdc7Tm7mU6U/nstClPoYFeP67h/ZQCR/SE/VGOkfhj3vqA7mwuO9VJSoCmwF5IKVdIvQ==
+config:
+  aws:region: ap-northeast-2
+  aws:defaultTags:
+    tags:
+      Layer: app
+      Product: buddybird
+      ManagedBy: pulumi
+      Team: joynnovate

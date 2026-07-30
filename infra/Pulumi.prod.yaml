@@ -7,3 +7,5 @@ config:
       Layer: infra
       ManagedBy: pulumi
       Team: joynnovate
+  cloudflare:apiToken:
+    secure: v1:m2NLyh0swIg2PTiv:qCP4X8rhvoSDYesREP8YQDxuI17xLWHQm9KrzUBJTvTKGmjbeU6dvDV7SW+GTJ1iu6DCQyR8n27xrEogfg3s+fg7nFzh

@@ -11,7 +11,7 @@ buddybird 서비스의 인프라를 만드는 프로젝트다.
 | `__main__.py` | StackReference로 상위 스택 값 조회, 서비스 조립, 출력값 export |
 | `data.py` | RDS, S3 버킷 |
 | `service.py` | ECS 서비스 ComponentResource |
-| `edge.py` | CloudFront와 OAC |
+| `edge.py` | CloudFront와 OAC, 사이트 DNS 레코드 |
 
 ## 상위 스택 참조
 
@@ -30,6 +30,7 @@ organization/joynnovate-infra/prod
 | `db_security_group_id` | RDS 인스턴스 |
 | `cache_security_group_id` | ElastiCache Serverless 캐시 |
 | `cluster_arn` | ECS 서비스 |
+| `alb_dns_name` | 서비스 호스트명의 Cloudflare CNAME |
 | `https_listener_arn` | 리스너 규칙 |
 | `cloudfront_certificate_arn` | CloudFront 배포 |
 
@@ -69,7 +70,13 @@ ECS 서비스 하나를 만드는 데 필요한 리소스를 ComponentResource �
 | task definition | ARM64, Fargate |
 | 타깃 그룹 | 서비스 포트와 헬스 체크 경로 지정 |
 | 리스너 규칙 | 호스트명으로 타깃 그룹 선택 |
-| ECS 서비스 | 클러스터에 배치, 타깃 그룹에 등록 |
+| ECS 서비스 | 클러스터에 배치, 타깃 그룹에 등록, `assign_public_ip` 활성화 |
+| Cloudflare DNS 레코드 | 서비스 호스트명을 ALB로 보내는 CNAME, 프록시 미사용 |
+
+task는 public 서브넷에 뜨므로 public IP가 있어야 ECR에서 이미지를 받는다.
+`assign_public_ip`를 켜지 않으면 이미지를 받지 못해 task가 기동에 실패한다.
+
+리스너 규칙의 priority는 지정하지 않는다.
 
 ### `edge.py`
 
@@ -77,8 +84,11 @@ ECS 서비스 하나를 만드는 데 필요한 리소스를 ComponentResource �
 | --- | --- |
 | CloudFront 배포 | 정적 사이트 버킷과 앱 데이터 버킷을 오리진으로 사용 |
 | OAC | 두 오리진 모두에 적용 |
+| Cloudflare DNS 레코드 | CloudFront 배포를 가리키는 CNAME, 프록시 미사용 |
 
 인증서는 `joynnovate-infra`가 us-east-1에서 발급한 것을 참조한다.
+
+루트 도메인에도 CNAME을 두고 Cloudflare의 CNAME flattening이 IP로 응답한다.
 
 ## 서비스 컴포넌트
 
@@ -126,8 +136,12 @@ refresh를 건너뛰면 Pulumi가 state에 남은 기존 revision을 다시 보�
 
 ## 수동 단계
 
-CloudFront 배포 도메인을 사이트 호스트명의 CNAME으로 Cloudflare에 등록한다.
+첫 적용 전에 Cloudflare API 토큰을 스택 secret으로 넣는다.
 
-루트 도메인에는 CNAME flattening으로 CloudFront를 직접 지정한다.
+```bash
+pulumi config set --secret cloudflare:apiToken <토큰>
+```
 
-Cloudflare 프록시는 끈 상태로 등록한다.
+토큰에는 대상 zone의 DNS 편집 권한을 준다.
+
+DNS 레코드 등록은 코드가 담당하므로 사람이 Cloudflare 대시보드를 여는 단계는 없다.

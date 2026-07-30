@@ -14,6 +14,7 @@ Pulumi 프로젝트 세 개가 계정 기반 자원과 공용 인프라, buddybi
 | 계정 | Innovation Sandbox on AWS로 임대한 단일 계정 |
 | Pulumi CLI | 3.254.0 이상 |
 | pulumi-aws | 7.x |
+| pulumi-cloudflare | 6.x |
 | Python | 3.14 이상 |
 | 패키지 관리 | uv |
 
@@ -21,7 +22,7 @@ Pulumi 프로젝트 세 개가 계정 기반 자원과 공용 인프라, buddybi
 
 ```
 bootstrap/        state 버킷, KMS 키, OIDC provider, CI 역할
-infra/            VPC, ECS 클러스터, ALB, ACM, 예산 알림
+infra/            VPC, ECS 클러스터, ALB, ACM, 로그 버킷, 예산 알림
 buddybird-app/    ECR, ECS 서비스, RDS, ElastiCache, S3, CloudFront
 docs/             프로젝트별 설계 문서
 .github/workflows/ Pulumi preview, apply 워크플로
@@ -77,7 +78,9 @@ s3://jn-state-198252712951-ap-northeast-2-an?region=ap-northeast-2
 awskms://alias/jn-pulumi-secrets?region=ap-northeast-2
 ```
 
-`Pulumi.prod.yaml`에는 `aws:region`과 `aws:defaultTags`, secrets provider만 둔다.
+`Pulumi.prod.yaml`에는 `aws:region`과 `aws:defaultTags`, secrets provider, Cloudflare API 토큰만 둔다.
+
+Cloudflare API 토큰은 DNS 레코드를 만드는 `joynnovate-infra`와 `buddybird-app`이 secret으로 보관한다.
 
 도메인과 이름 접두사, 예산 금액, VPC CIDR 같은 값은 각 프로젝트의 Python 상수로 둔다.
 
@@ -160,21 +163,19 @@ OIDC의 `AssumeRoleWithWebIdentity`는 호출 주체가 계정 밖이라 SCP 평
 
 | 대상 | 관리 주체 |
 | --- | --- |
-| 네임서버와 DNS 레코드 전체 | Cloudflare |
-| ACM 인증서 | `joynnovate-infra` |
-| CloudFront 배포 | `buddybird-app` |
+| 네임서버 | Cloudflare |
+| ACM 인증서와 검증 CNAME | `joynnovate-infra` |
+| CloudFront 배포와 사이트 CNAME | `buddybird-app` |
 
 Route 53 hosted zone은 만들지 않는다.
 
 CloudFront용 ACM 인증서는 us-east-1에서 발급한다.
 
-사람이 Cloudflare에 등록해야 하는 레코드는 두 가지다.
+DNS 레코드는 Cloudflare provider가 만들므로 사람이 대시보드에서 등록하는 레코드는 없다.
 
-- ACM 검증 CNAME
-  - 등록 전까지 인증서 검증이 끝나지 않아 적용이 멈춤
-- CloudFront 배포를 가리키는 레코드
-  - 루트 도메인에는 CNAME flattening으로 CloudFront를 직접 지정
-  - Cloudflare 프록시를 끈 상태로 등록
+레코드는 모두 Cloudflare 프록시를 끈 상태로 만든다.
+
+루트 도메인에도 CNAME을 두고 Cloudflare의 CNAME flattening이 IP로 응답한다.
 
 ## 용어
 

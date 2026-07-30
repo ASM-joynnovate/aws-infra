@@ -8,8 +8,8 @@ buddybird 서비스의 인프라를 만드는 프로젝트다.
 
 | 파일 | 담당 |
 | --- | --- |
-| `__main__.py` | StackReference로 상위 스택 값 조회, 서비스 조립, 출력값 export |
-| `data.py` | RDS, S3 버킷 |
+| `__main__.py` | StackReference로 상위 스택 값 조회, S3 버킷 생성, 서비스 조립, 출력값 export |
+| `data.py` | RDS, ElastiCache |
 | `service.py` | ECS 서비스 ComponentResource |
 | `edge.py` | CloudFront와 OAC, 사이트 DNS 레코드 |
 
@@ -46,16 +46,10 @@ organization/joynnovate-infra/prod
 | ElastiCache Serverless | Valkey 엔진, private 서브넷 |
 | ElastiCache user | 앱이 사용하는 RBAC 계정 |
 | ElastiCache user group | 캐시에 연결하는 user 묶음 |
-| S3 버킷 | 앱 데이터용 |
-| S3 버킷 | 정적 사이트 배포용 |
 
 RDS 비밀번호는 `manage_master_user_password`로 생성해 Secrets Manager에 저장한다.
 
 캐시 비밀번호는 `random.RandomPassword`로 생성해 Secrets Manager에 저장하고, ECS task에 환경 변수로 주입한다.
-
-두 버킷 모두 버저닝과 public access block을 적용하고, 미완료 멀티파트 업로드를 시작 후 7일에 중단한다.
-
-앱 데이터 버킷은 수명이 다른 데이터를 prefix로 나누고 prefix마다 lifecycle 규칙을 적용한다.
 
 ### `service.py`
 
@@ -89,6 +83,29 @@ task는 public 서브넷에 뜨므로 public IP가 있어야 ECR에서 이미지
 인증서는 `joynnovate-infra`가 us-east-1에서 발급한 것을 참조한다.
 
 루트 도메인에도 CNAME을 두고 Cloudflare의 CNAME flattening이 IP로 응답한다.
+
+### `__main__.py`
+
+| 리소스 | 구성 |
+| --- | --- |
+| S3 버킷 | v1 오디오 수집 개발용 |
+| S3 버킷 | v1 오디오 수집 로컬 개발용 |
+
+버킷 이름은 `jn-buddybird-v1-data-<환경>-<계정 ID>-<리전>` 형식이다.
+
+v1 수집 버킷은 v2 운영을 시작한 뒤 데이터를 옮기고 삭제한다.
+두 버전의 버킷이 한동안 함께 있어야 해서 이름에 버전을 넣는다.
+
+두 버킷 모두 SSE-S3 암호화와 public access block, BucketOwnerEnforced를 적용하고 미완료 멀티파트 업로드를 시작 후 7일에 중단한다.
+버킷 정책은 `aws:SecureTransport`가 false인 요청을 거부한다.
+
+개발 중 올리는 테스트 오디오만 들어가므로 버저닝과 객체 만료 규칙은 걸지 않는다.
+
+운영 수집 버킷은 아직 만들지 않았다.
+만들 때 `capture/` prefix에 180일 만료를 걸고 `word/` prefix는 만료 없이 둔다.
+
+정적 사이트 버킷도 아직 만들지 않았다.
+이름은 `jn-buddybird-site-<계정 ID>-<리전>`으로 두고 환경을 나누지 않는다.
 
 ## 서비스 컴포넌트
 

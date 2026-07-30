@@ -14,15 +14,12 @@ SUB_PREFIX = "repo:ASM-joynnovate@279207361/aws-infra@1311763701"
 PREVIEW_SUB = f"{SUB_PREFIX}:pull_request"
 PULUMI_SUB = f"{SUB_PREFIX}:environment:prod"
 
-PREVIEW_ROLE_NAME = "jn-ci-preview"
-PULUMI_ROLE_NAME = "jn-ci-pulumi"
-CI_ROLE_PATTERN = "jn-ci-*"
+CI_ROLE_PREFIX = "jn-ci"
+PREVIEW_ROLE_NAME = f"{CI_ROLE_PREFIX}-preview"
+PULUMI_ROLE_NAME = f"{CI_ROLE_PREFIX}-pulumi"
 
 READ_ONLY_POLICY_ARN = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 POWER_USER_POLICY_ARN = "arn:aws:iam::aws:policy/PowerUserAccess"
-
-ALLOW = "Allow"
-DENY = "Deny"
 
 ROLE_WRITE_ACTIONS = [
     "iam:CreateRole",
@@ -51,7 +48,7 @@ def _trust_policy(provider_arn, sub):
     return aws.iam.get_policy_document_output(
         statements=[
             GetPolicyDocumentStatementArgs(
-                effect=ALLOW,
+                effect="Allow",
                 actions=["sts:AssumeRoleWithWebIdentity"],
                 principals=[
                     GetPolicyDocumentStatementPrincipalArgs(
@@ -81,7 +78,7 @@ def _preview_policy(state_bucket_arn, secrets_key_arn):
         statements=[
             GetPolicyDocumentStatementArgs(
                 sid="StateLock",
-                effect=ALLOW,
+                effect="Allow",
                 actions=["s3:PutObject", "s3:DeleteObject"],
                 resources=[
                     pulumi.Output.format("{0}/.pulumi/locks/*", state_bucket_arn)
@@ -89,7 +86,7 @@ def _preview_policy(state_bucket_arn, secrets_key_arn):
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DecryptStackSecrets",
-                effect=ALLOW,
+                effect="Allow",
                 actions=["kms:Decrypt"],
                 resources=[secrets_key_arn],
             ),
@@ -102,13 +99,13 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
         statements=[
             GetPolicyDocumentStatementArgs(
                 sid="ManageServiceRoles",
-                effect=ALLOW,
+                effect="Allow",
                 actions=ROLE_WRITE_ACTIONS + POLICY_WRITE_ACTIONS + ["iam:PassRole"],
                 resources=["*"],
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenyPersistentCredentials",
-                effect=DENY,
+                effect="Deny",
                 actions=[
                     "iam:CreateUser",
                     "iam:CreateAccessKey",
@@ -119,7 +116,7 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenyOidcProviderChanges",
-                effect=DENY,
+                effect="Deny",
                 actions=[
                     "iam:CreateOpenIDConnectProvider",
                     "iam:DeleteOpenIDConnectProvider",
@@ -133,19 +130,19 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenyCiRoleChanges",
-                effect=DENY,
+                effect="Deny",
                 actions=ROLE_WRITE_ACTIONS,
-                resources=[f"arn:aws:iam::{account_id}:role/{CI_ROLE_PATTERN}"],
+                resources=[f"arn:aws:iam::{account_id}:role/{CI_ROLE_PREFIX}-*"],
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenyStateBucketDeletion",
-                effect=DENY,
+                effect="Deny",
                 actions=["s3:DeleteBucket"],
                 resources=[state_bucket_arn],
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenySecretsKeyDestruction",
-                effect=DENY,
+                effect="Deny",
                 actions=[
                     "kms:ScheduleKeyDeletion",
                     "kms:DisableKey",
@@ -158,53 +155,63 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
     ).json
 
 
-def create(account_id, state_bucket_arn, secrets_key_arn):
-    provider = aws.iam.OpenIdConnectProvider(
-        "github",
-        url=OIDC_URL,
-        client_id_lists=[OIDC_AUDIENCE],
-    )
+class CiRoles(pulumi.ComponentResource):
+    def __init__(self, name, account_id, state_bucket_arn, secrets_key_arn, opts=None):
+        super().__init__("joynnovate:bootstrap:CiRoles", name, None, opts)
+        child = pulumi.ResourceOptions(
+            parent=self,
+            aliases=[pulumi.Alias(parent=pulumi.ROOT_STACK_RESOURCE)],
+        )
 
-    preview_role = aws.iam.Role(
-        "ci-preview",
-        name=PREVIEW_ROLE_NAME,
-        description="Read-only role for pulumi preview on pull requests",
-        assume_role_policy=_trust_policy(provider.arn, PREVIEW_SUB),
-    )
+        provider = aws.iam.OpenIdConnectProvider(
+            "github",
+            url=OIDC_URL,
+            client_id_lists=[OIDC_AUDIENCE],
+            opts=child,
+        )
 
-    aws.iam.RolePolicyAttachment(
-        "ci-preview-read-only",
-        role=preview_role.name,
-        policy_arn=READ_ONLY_POLICY_ARN,
-    )
+        self.preview_role = aws.iam.Role(
+            "ci-preview",
+            name=PREVIEW_ROLE_NAME,
+            description="Read-only role for pulumi preview on pull requests",
+            assume_role_policy=_trust_policy(provider.arn, PREVIEW_SUB),
+            opts=child,
+        )
 
-    aws.iam.RolePolicy(
-        "ci-preview-state",
-        role=preview_role.name,
-        policy=_preview_policy(state_bucket_arn, secrets_key_arn),
-    )
+        aws.iam.RolePolicyAttachment(
+            "ci-preview-read-only",
+            role=self.preview_role.name,
+            policy_arn=READ_ONLY_POLICY_ARN,
+            opts=child,
+        )
 
-    pulumi_role = aws.iam.Role(
-        "ci-pulumi",
-        name=PULUMI_ROLE_NAME,
-        description="Role for pulumi up after prod environment approval",
-        assume_role_policy=_trust_policy(provider.arn, PULUMI_SUB),
-    )
+        aws.iam.RolePolicy(
+            "ci-preview-state",
+            role=self.preview_role.name,
+            policy=_preview_policy(state_bucket_arn, secrets_key_arn),
+            opts=child,
+        )
 
-    aws.iam.RolePolicyAttachment(
-        "ci-pulumi-power-user",
-        role=pulumi_role.name,
-        policy_arn=POWER_USER_POLICY_ARN,
-    )
+        self.pulumi_role = aws.iam.Role(
+            "ci-pulumi",
+            name=PULUMI_ROLE_NAME,
+            description="Role for pulumi up after prod environment approval",
+            assume_role_policy=_trust_policy(provider.arn, PULUMI_SUB),
+            opts=child,
+        )
 
-    aws.iam.RolePolicy(
-        "ci-pulumi-iam",
-        role=pulumi_role.name,
-        policy=_pulumi_policy(account_id, state_bucket_arn, secrets_key_arn),
-    )
+        aws.iam.RolePolicyAttachment(
+            "ci-pulumi-power-user",
+            role=self.pulumi_role.name,
+            policy_arn=POWER_USER_POLICY_ARN,
+            opts=child,
+        )
 
-    return {
-        "oidc_provider_arn": provider.arn,
-        "preview_role_arn": preview_role.arn,
-        "pulumi_role_arn": pulumi_role.arn,
-    }
+        aws.iam.RolePolicy(
+            "ci-pulumi-iam",
+            role=self.pulumi_role.name,
+            policy=_pulumi_policy(account_id, state_bucket_arn, secrets_key_arn),
+            opts=child,
+        )
+
+        self.register_outputs({})

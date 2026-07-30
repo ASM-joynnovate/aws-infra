@@ -6,6 +6,13 @@ state를 저장할 S3 버킷과 스택 secret을 암호화할 KMS 키, GitHub Ac
 
 사람이 로컬에서 실행해야 한다.
 
+## 코드 구성
+
+| 파일 | 담당 |
+| --- | --- |
+| `__main__.py` | state 버킷과 KMS 키 생성, CI 컴포넌트 조립, 출력값 export |
+| `ci.py` | `CiRoles` 컴포넌트, GitHub OIDC provider와 CI 역할 두 개 |
+
 ## 생성 리소스
 
 | 리소스 | 식별자 |
@@ -30,7 +37,8 @@ state 버킷에는 다음 설정을 적용한다.
 | 이전 버전 state | 90일 뒤 삭제 |
 | 버킷 정책 | `aws:SecureTransport`가 false인 요청을 거부 |
 
-버킷에는 `protect=True`를 걸어 `pulumi destroy`로 삭제되지 않게 한다.
+버킷과 KMS 키에는 `protect=True`를 걸어 `pulumi destroy`로 삭제되지 않게 한다.
+둘 중 하나만 막으면 state 파일과 복호화 키 가운데 한쪽만 남아 어느 스택도 복구할 수 없다.
 
 정말 삭제해야 하면 `protect`를 제거하고 적용한 뒤 destroy를 실행한다.
 
@@ -98,6 +106,11 @@ gh api /repos/<조직>/<저장소>/actions/oidc/customization/sub
 ```
 
 AWS가 자체 신뢰 루트 CA 목록으로 GitHub 인증서를 검증하므로 `thumbprint_list`는 지정하지 않는다.
+
+OIDC provider와 두 역할은 원래 스택 바로 아래에 있다가 `CiRoles` 컴포넌트 안으로 옮겼다.
+부모가 바뀌면 URN도 바뀌어 Pulumi가 삭제 후 재생성을 시도하므로, 각 리소스에 `Alias(parent=ROOT_STACK_RESOURCE)`를 붙여 이전 URN과 이어두고 적용했다.
+적용을 마친 state에는 새 URN이 들어 있어 이 alias는 더 이상 매칭되지 않는다.
+마이그레이션 이전 state를 복원하는 경우에만 쓰이므로 지워도 동작에는 영향이 없다.
 
 ## 최초 구축 절차
 

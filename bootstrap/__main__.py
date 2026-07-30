@@ -1,7 +1,7 @@
 import pulumi
 import pulumi_aws as aws
 
-import ci
+from ci import CiRoles
 
 NAME_PREFIX = "jn"
 NONCURRENT_RETENTION_DAYS = 90
@@ -107,6 +107,7 @@ secrets_key = aws.kms.Key(
     description="Pulumi 스택 secret 암호화",
     deletion_window_in_days=7,
     enable_key_rotation=True,
+    opts=pulumi.ResourceOptions(protect=True),
 )
 
 aws.kms.Alias(
@@ -115,12 +116,17 @@ aws.kms.Alias(
     target_key_id=secrets_key.key_id,
 )
 
-ci_roles = ci.create(account_id, state.arn, secrets_key.arn)
+ci = CiRoles(
+    "ci",
+    account_id=account_id,
+    state_bucket_arn=state.arn,
+    secrets_key_arn=secrets_key.arn,
+)
 
 pulumi.export("state_bucket_name", state.id)
 pulumi.export("state_bucket_arn", state.arn)
 pulumi.export("secrets_key_arn", secrets_key.arn)
 pulumi.export("secrets_key_alias", key_alias)
 pulumi.export("region", region)
-pulumi.export("ci_preview_role_arn", ci_roles["preview_role_arn"])
-pulumi.export("ci_pulumi_role_arn", ci_roles["pulumi_role_arn"])
+pulumi.export("ci_preview_role_arn", ci.preview_role.arn)
+pulumi.export("ci_pulumi_role_arn", ci.pulumi_role.arn)

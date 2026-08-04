@@ -8,3 +8,9 @@ config:
       Product: buddybird
       ManagedBy: pulumi
       Team: joynnovate
+  buddybird-app:authAccessTokenKey:
+    secure: v1:bTlPoAmJxWy8qx6n:sbDRODhWVLkLjWazN4Ww6P/9j+av69IGZui4qsR0RHtx7Fs+7qrWwtkWexuMSPMbl2zcMZwJgxz0vy9L
+  buddybird-app:authRefreshTokenKey:
+    secure: v1:1u6dr+nCEaZNIiB2:xycxzI7RCfV5TehxTRlefwlvUZgIp3oZApK1O4taq2oJCmQkQTKOserkCt4RWvlz0remeMLtHzpTgIDL
+  cloudflare:apiToken:
+    secure: v1:hzTOfeXrzF2fDqQj:U+eFlhZ8I//oquDyCG6KKv9YnxF3nWreGjG1n+6OuN2vZeaEdgz+1+8sxxf1RBLknPTYeEUCkj19zo9v3M5bnpQmZMCI

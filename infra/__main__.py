@@ -15,7 +15,7 @@ LOG_RETENTION_DAYS = 30
 ALB_LOG_SERVICE = "logdelivery.elasticloadbalancing.amazonaws.com"
 FLOW_LOG_SERVICE = "delivery.logs.amazonaws.com"
 
-BUDGET_LIMIT_USD = 80
+BUDGET_LIMIT_USD = 120
 BUDGET_ALERT_PERCENTS = [50, 75, 90]
 BUDGET_EMAILS = ["joynnovate@gmail.com"]
 

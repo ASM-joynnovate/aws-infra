@@ -14,3 +14,5 @@ config:
     secure: v1:1u6dr+nCEaZNIiB2:xycxzI7RCfV5TehxTRlefwlvUZgIp3oZApK1O4taq2oJCmQkQTKOserkCt4RWvlz0remeMLtHzpTgIDL
   cloudflare:apiToken:
     secure: v1:hzTOfeXrzF2fDqQj:U+eFlhZ8I//oquDyCG6KKv9YnxF3nWreGjG1n+6OuN2vZeaEdgz+1+8sxxf1RBLknPTYeEUCkj19zo9v3M5bnpQmZMCI
+  buddybird-app:backofficePassword:
+    secure: v1:29d0cdcOqvN4DS2w:/ARXp+E8kGSKcDZmEqQFM6/4pUYhAbRmoN28SGFPrQ==

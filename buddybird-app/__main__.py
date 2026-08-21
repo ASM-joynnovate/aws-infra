@@ -32,7 +32,7 @@ config = pulumi.Config()
 infra = pulumi.StackReference(INFRA_STACK)
 
 
-def data_bucket(env: str) -> aws.s3.Bucket:
+def data_bucket(env: str, *, cors_allowed_origins: list[str]) -> aws.s3.Bucket:
     name = f"data-{env}"
 
     bucket = aws.s3.Bucket(
@@ -107,10 +107,32 @@ def data_bucket(env: str) -> aws.s3.Bucket:
         ),
     )
 
+    aws.s3.BucketCorsConfiguration(
+        name,
+        bucket=bucket.id,
+        cors_rules=[
+            aws.s3.BucketCorsConfigurationCorsRuleArgs(
+                allowed_headers=["*"],
+                allowed_methods=["GET"],
+                allowed_origins=cors_allowed_origins,
+                expose_headers=["Content-Length", "Content-Type"],
+            )
+        ],
+    )
+
     return bucket
 
 
-buckets = {env: data_bucket(env) for env in ("dev", "prod", "local")}
+CORS_ORIGINS = {
+    "local": ["http://localhost:3000"],
+    "dev": [f"https://dev.{DOMAIN}"],
+    "prod": [f"https://{DOMAIN}"],
+}
+
+buckets = {
+    env: data_bucket(env, cors_allowed_origins=CORS_ORIGINS[env])
+    for env in ("dev", "prod", "local")
+}
 
 repository = ecr_repository(API_PREFIX)
 
@@ -141,6 +163,7 @@ for env, settings in ENVIRONMENTS.items():
         name=name,
         access_token_key=config.require_secret("authAccessTokenKey"),
         refresh_token_key=config.require_secret("authRefreshTokenKey"),
+        backoffice_password=config.require_secret("backofficePassword"),
     )
 
     api_service(

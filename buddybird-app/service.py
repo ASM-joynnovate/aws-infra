@@ -168,6 +168,10 @@ def api_service(
                         "name": "AUTH_REFRESH_TOKEN_SECRET_KEY",
                         "valueFrom": f"{a['app_secret']}:refresh_token_key::",
                     },
+                    {
+                        "name": "BACKOFFICE_PASSWORD",
+                        "valueFrom": f"{a['app_secret']}:backoffice_password::",
+                    },
                 ],
                 "logConfiguration": {
                     "logDriver": "awslogs",

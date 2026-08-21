@@ -52,6 +52,7 @@ def app_secret(
     name: str,
     access_token_key: pulumi.Input[str],
     refresh_token_key: pulumi.Input[str],
+    backoffice_password: pulumi.Input[str],
 ) -> aws.secretsmanager.Secret:
     secret = aws.secretsmanager.Secret(
         f"app-{env}",
@@ -67,6 +68,7 @@ def app_secret(
             {
                 "access_token_key": access_token_key,
                 "refresh_token_key": refresh_token_key,
+                "backoffice_password": backoffice_password,
             }
         ),
     )

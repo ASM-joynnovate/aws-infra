@@ -36,9 +36,9 @@ UNTAGGED_EXPIRE_DAYS = 7
 IMAGE_LIMIT = 20
 
 
-def ecr_repository(name: str) -> aws.ecr.Repository:
+def ecr_repository(name: str, logical_name: str) -> aws.ecr.Repository:
     repository = aws.ecr.Repository(
-        "api",
+        logical_name,
         name=name,
         image_tag_mutability="IMMUTABLE",
         image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
@@ -47,7 +47,7 @@ def ecr_repository(name: str) -> aws.ecr.Repository:
     )
 
     aws.ecr.LifecyclePolicy(
-        "api",
+        logical_name,
         repository=repository.name,
         policy=json.dumps(
             {

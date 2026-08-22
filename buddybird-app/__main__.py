@@ -1,14 +1,17 @@
+import json
+
 import pulumi
 import pulumi_aws as aws
 import pulumi_cloudflare as cloudflare
 
 from data import app_secret, database, db_subnet_group
 from deploy import deploy_role, ecr_repository, site_deploy_role
-from service import api_service
+from service import api_service, backoffice_frontend_service
 from edge import distribution, site_bucket
 
 NAME_PREFIX = "jn-buddybird-v1"
 API_PREFIX = "jn-buddybird-api"
+BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
 SITE_PREFIX = "jn-buddybird-site"
 ECS_CLUSTER_NAME = "jn-cluster"
 
@@ -18,9 +21,14 @@ RECORD_TTL = 300
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"
 
-ENVIRONMENTS = {
+API_ENVIRONMENTS = {
     "prod": {"hostname": DOMAIN, "priority": 10},
     "dev": {"hostname": f"dev.{DOMAIN}", "priority": 20},
+}
+
+BACKOFFICE_FRONTEND_ENVIRONMENTS = {
+    "prod": {"hostname": f"backoffice.{DOMAIN}", "priority": 30},
+    "dev": {"hostname": f"dev-backoffice.{DOMAIN}", "priority": 40},
 }
 
 INFRA_STACK = "organization/joynnovate-infra/prod"
@@ -125,8 +133,8 @@ def data_bucket(env: str, *, cors_allowed_origins: list[str]) -> aws.s3.Bucket:
 
 CORS_ORIGINS = {
     "local": ["http://localhost:3000"],
-    "dev": [f"https://dev.{DOMAIN}"],
-    "prod": [f"https://{DOMAIN}"],
+    "dev": [f"https://dev.{DOMAIN}", f"https://dev-backoffice.{DOMAIN}"],
+    "prod": [f"https://{DOMAIN}", f"https://backoffice.{DOMAIN}"],
 }
 
 buckets = {
@@ -134,7 +142,10 @@ buckets = {
     for env in ("dev", "prod", "local")
 }
 
-repository = ecr_repository(API_PREFIX)
+repository = ecr_repository(API_PREFIX, logical_name="api")
+backoffice_frontend_repository = ecr_repository(
+    BACKOFFICE_FRONTEND_PREFIX, logical_name="backoffice-frontend"
+)
 
 deploy = deploy_role(
     name=f"{API_PREFIX}-deploy",
@@ -148,7 +159,7 @@ deploy = deploy_role(
 
 subnet_group = db_subnet_group(API_PREFIX, infra.get_output("private_subnet_ids"))
 
-for env, settings in ENVIRONMENTS.items():
+for env, api_settings in API_ENVIRONMENTS.items():
     name = f"{API_PREFIX}-{env}"
 
     db = database(
@@ -166,6 +177,8 @@ for env, settings in ENVIRONMENTS.items():
         backoffice_password=config.require_secret("backofficePassword"),
     )
 
+    backoffice_frontend_settings = BACKOFFICE_FRONTEND_ENVIRONMENTS[env]
+
     api_service(
         env,
         name=name,
@@ -181,8 +194,28 @@ for env, settings in ENVIRONMENTS.items():
         task_security_group_id=infra.get_output("task_security_group_id"),
         cluster_arn=infra.get_output("cluster_arn"),
         listener_arn=infra.get_output("https_listener_arn"),
-        hostname=settings["hostname"],
-        priority=settings["priority"],
+        hostname=api_settings["hostname"],
+        priority=api_settings["priority"],
+        cors_origin=json.dumps(
+            [f"https://{backoffice_frontend_settings['hostname']}"]
+        ),
+    )
+
+    backoffice_frontend_service(
+        env,
+        name=f"{BACKOFFICE_FRONTEND_PREFIX}-{env}",
+        target_group_name=f"jn-buddybird-bo-fe-{env}",
+        image=pulumi.Output.concat(
+            backoffice_frontend_repository.repository_url, f":{env}-bootstrap"
+        ),
+        region=region,
+        vpc_id=infra.get_output("vpc_id"),
+        subnet_ids=infra.get_output("public_subnet_ids"),
+        task_security_group_id=infra.get_output("task_security_group_id"),
+        cluster_arn=infra.get_output("cluster_arn"),
+        listener_arn=infra.get_output("https_listener_arn"),
+        hostname=backoffice_frontend_settings["hostname"],
+        priority=backoffice_frontend_settings["priority"],
     )
 
 site = site_bucket(f"{SITE_PREFIX}-{account_id}-{region}")
@@ -205,6 +238,8 @@ for label, hostname, target in (
     ("root", DOMAIN, cdn.domain_name),
     ("www", f"www.{DOMAIN}", cdn.domain_name),
     ("dev", f"dev.{DOMAIN}", infra.get_output("alb_dns_name")),
+    ("backoffice", f"backoffice.{DOMAIN}", infra.get_output("alb_dns_name")),
+    ("dev-backoffice", f"dev-backoffice.{DOMAIN}", infra.get_output("alb_dns_name")),
 ):
     cloudflare.DnsRecord(
         label,
@@ -221,6 +256,10 @@ pulumi.export("data_dev_bucket_name", buckets["dev"].id)
 pulumi.export("data_prod_bucket_name", buckets["prod"].id)
 pulumi.export("data_local_bucket_name", buckets["local"].id)
 pulumi.export("api_repository_url", repository.repository_url)
+pulumi.export(
+    "backoffice_frontend_repository_url",
+    backoffice_frontend_repository.repository_url,
+)
 pulumi.export("deploy_role_arn", deploy.arn)
 pulumi.export("site_bucket_name", site.id)
 pulumi.export("site_distribution_id", cdn.id)

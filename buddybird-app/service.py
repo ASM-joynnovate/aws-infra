@@ -39,18 +39,32 @@ def _assume_role_policy() -> str:
     ).json
 
 
-def _roles(env, name, bucket, secret_arns):
+def _log_group(logical_name: str, name: str) -> aws.cloudwatch.LogGroup:
+    return aws.cloudwatch.LogGroup(
+        logical_name,
+        name=f"/ecs/{name}",
+        retention_in_days=LOG_RETENTION_DAYS,
+    )
+
+
+def _execution_role(logical_name: str, name: str) -> aws.iam.Role:
     execution = aws.iam.Role(
-        f"exec-{env}",
+        logical_name,
         name=f"{name}-exec",
         assume_role_policy=_assume_role_policy(),
     )
 
     aws.iam.RolePolicyAttachment(
-        f"exec-{env}",
+        logical_name,
         role=execution.name,
         policy_arn=EXECUTION_POLICY_ARN,
     )
+
+    return execution
+
+
+def _roles(env, name, bucket, secret_arns):
+    execution = _execution_role(f"exec-{env}", name)
 
     aws.iam.RolePolicy(
         f"exec-{env}-secrets",
@@ -94,6 +108,113 @@ def _roles(env, name, bucket, secret_arns):
     return execution, task
 
 
+def _fargate_service(
+    logical_name: str,
+    *,
+    name: str,
+    target_group_name: str,
+    container_name: str,
+    port: int,
+    container: pulumi.Output,
+    execution_role: aws.iam.Role,
+    task_role: aws.iam.Role | None = None,
+    vpc_id: pulumi.Input[str],
+    subnet_ids: pulumi.Input[list],
+    task_security_group_id: pulumi.Input[str],
+    cluster_arn: pulumi.Input[str],
+    listener_arn: pulumi.Input[str],
+    hostname: str,
+    priority: int,
+    path_pattern: str | None = None,
+) -> aws.ecs.Service:
+    task_definition = aws.ecs.TaskDefinition(
+        logical_name,
+        family=name,
+        cpu=CPU,
+        memory=MEMORY,
+        network_mode="awsvpc",
+        requires_compatibilities=["FARGATE"],
+        runtime_platform=aws.ecs.TaskDefinitionRuntimePlatformArgs(
+            cpu_architecture="ARM64",
+            operating_system_family="LINUX",
+        ),
+        execution_role_arn=execution_role.arn,
+        task_role_arn=task_role.arn if task_role else None,
+        container_definitions=container.apply(pulumi.Output.json_dumps),
+    )
+
+    target_group = aws.lb.TargetGroup(
+        logical_name,
+        name=target_group_name,
+        port=port,
+        protocol="HTTP",
+        target_type="ip",
+        vpc_id=vpc_id,
+        deregistration_delay=DEREGISTRATION_DELAY,
+        health_check=aws.lb.TargetGroupHealthCheckArgs(
+            path=HEALTH_PATH,
+            matcher="200",
+            interval=30,
+            timeout=5,
+            healthy_threshold=2,
+            unhealthy_threshold=3,
+        ),
+    )
+
+    conditions = [
+        aws.lb.ListenerRuleConditionArgs(
+            host_header=aws.lb.ListenerRuleConditionHostHeaderArgs(
+                values=[hostname]
+            )
+        ),
+    ]
+    if path_pattern:
+        conditions.append(
+            aws.lb.ListenerRuleConditionArgs(
+                path_pattern=aws.lb.ListenerRuleConditionPathPatternArgs(
+                    values=[path_pattern]
+                )
+            )
+        )
+
+    aws.lb.ListenerRule(
+        logical_name,
+        listener_arn=listener_arn,
+        priority=priority,
+        conditions=conditions,
+        actions=[
+            aws.lb.ListenerRuleActionArgs(
+                type="forward", target_group_arn=target_group.arn
+            )
+        ],
+    )
+
+    return aws.ecs.Service(
+        logical_name,
+        name=name,
+        cluster=cluster_arn,
+        task_definition=task_definition.arn,
+        desired_count=1,
+        launch_type="FARGATE",
+        health_check_grace_period_seconds=HEALTH_GRACE_SECONDS,
+        network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
+            subnets=subnet_ids,
+            security_groups=[task_security_group_id],
+            assign_public_ip=True,
+        ),
+        load_balancers=[
+            aws.ecs.ServiceLoadBalancerArgs(
+                target_group_arn=target_group.arn,
+                container_name=container_name,
+                container_port=port,
+            )
+        ],
+        opts=pulumi.ResourceOptions(
+            ignore_changes=["taskDefinition", "desiredCount"]
+        ),
+    )
+
+
 def api_service(
     env: str,
     *,
@@ -112,11 +233,7 @@ def api_service(
     priority: int,
     cors_origin: str,
 ) -> aws.ecs.Service:
-    log_group = aws.cloudwatch.LogGroup(
-        f"api-{env}",
-        name=f"/ecs/{name}",
-        retention_in_days=LOG_RETENTION_DAYS,
-    )
+    log_group = _log_group(f"api-{env}", name)
 
     db_secret_arn = database.master_user_secrets[0].secret_arn
     execution, task = _roles(env, name, bucket, [db_secret_arn, secret.arn])
@@ -188,86 +305,23 @@ def api_service(
         ]
     )
 
-    task_definition = aws.ecs.TaskDefinition(
-        f"api-{env}",
-        family=name,
-        cpu=CPU,
-        memory=MEMORY,
-        network_mode="awsvpc",
-        requires_compatibilities=["FARGATE"],
-        runtime_platform=aws.ecs.TaskDefinitionRuntimePlatformArgs(
-            cpu_architecture="ARM64",
-            operating_system_family="LINUX",
-        ),
-        execution_role_arn=execution.arn,
-        task_role_arn=task.arn,
-        container_definitions=container.apply(pulumi.Output.json_dumps),
-    )
-
-    target_group = aws.lb.TargetGroup(
+    return _fargate_service(
         f"api-{env}",
         name=name,
+        target_group_name=name,
+        container_name="api",
         port=PORT,
-        protocol="HTTP",
-        target_type="ip",
+        container=container,
+        execution_role=execution,
+        task_role=task,
         vpc_id=vpc_id,
-        deregistration_delay=DEREGISTRATION_DELAY,
-        health_check=aws.lb.TargetGroupHealthCheckArgs(
-            path=HEALTH_PATH,
-            matcher="200",
-            interval=30,
-            timeout=5,
-            healthy_threshold=2,
-            unhealthy_threshold=3,
-        ),
-    )
-
-    aws.lb.ListenerRule(
-        f"api-{env}",
+        subnet_ids=subnet_ids,
+        task_security_group_id=task_security_group_id,
+        cluster_arn=cluster_arn,
         listener_arn=listener_arn,
+        hostname=hostname,
         priority=priority,
-        conditions=[
-            aws.lb.ListenerRuleConditionArgs(
-                host_header=aws.lb.ListenerRuleConditionHostHeaderArgs(
-                    values=[hostname]
-                )
-            ),
-            aws.lb.ListenerRuleConditionArgs(
-                path_pattern=aws.lb.ListenerRuleConditionPathPatternArgs(
-                    values=[PATH_PATTERN]
-                )
-            ),
-        ],
-        actions=[
-            aws.lb.ListenerRuleActionArgs(
-                type="forward", target_group_arn=target_group.arn
-            )
-        ],
-    )
-
-    return aws.ecs.Service(
-        f"api-{env}",
-        name=name,
-        cluster=cluster_arn,
-        task_definition=task_definition.arn,
-        desired_count=1,
-        launch_type="FARGATE",
-        health_check_grace_period_seconds=HEALTH_GRACE_SECONDS,
-        network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
-            subnets=subnet_ids,
-            security_groups=[task_security_group_id],
-            assign_public_ip=True,
-        ),
-        load_balancers=[
-            aws.ecs.ServiceLoadBalancerArgs(
-                target_group_arn=target_group.arn,
-                container_name="api",
-                container_port=PORT,
-            )
-        ],
-        opts=pulumi.ResourceOptions(
-            ignore_changes=["taskDefinition", "desiredCount"]
-        ),
+        path_pattern=PATH_PATTERN,
     )
 
 
@@ -286,23 +340,9 @@ def backoffice_frontend_service(
     hostname: str,
     priority: int,
 ) -> aws.ecs.Service:
-    log_group = aws.cloudwatch.LogGroup(
-        f"backoffice-frontend-{env}",
-        name=f"/ecs/{name}",
-        retention_in_days=LOG_RETENTION_DAYS,
-    )
+    log_group = _log_group(f"backoffice-frontend-{env}", name)
 
-    execution = aws.iam.Role(
-        f"backoffice-frontend-exec-{env}",
-        name=f"{name}-exec",
-        assume_role_policy=_assume_role_policy(),
-    )
-
-    aws.iam.RolePolicyAttachment(
-        f"backoffice-frontend-exec-{env}",
-        role=execution.name,
-        policy_arn=EXECUTION_POLICY_ARN,
-    )
+    execution = _execution_role(f"backoffice-frontend-exec-{env}", name)
 
     container = pulumi.Output.all(image=image, log_group=log_group.name).apply(
         lambda a: [
@@ -325,78 +365,19 @@ def backoffice_frontend_service(
         ]
     )
 
-    task_definition = aws.ecs.TaskDefinition(
-        f"backoffice-frontend-{env}",
-        family=name,
-        cpu=CPU,
-        memory=MEMORY,
-        network_mode="awsvpc",
-        requires_compatibilities=["FARGATE"],
-        runtime_platform=aws.ecs.TaskDefinitionRuntimePlatformArgs(
-            cpu_architecture="ARM64",
-            operating_system_family="LINUX",
-        ),
-        execution_role_arn=execution.arn,
-        container_definitions=container.apply(pulumi.Output.json_dumps),
-    )
-
-    target_group = aws.lb.TargetGroup(
-        f"backoffice-frontend-{env}",
-        name=target_group_name,
-        port=BACKOFFICE_FRONTEND_PORT,
-        protocol="HTTP",
-        target_type="ip",
-        vpc_id=vpc_id,
-        deregistration_delay=DEREGISTRATION_DELAY,
-        health_check=aws.lb.TargetGroupHealthCheckArgs(
-            path=HEALTH_PATH,
-            matcher="200",
-            interval=30,
-            timeout=5,
-            healthy_threshold=2,
-            unhealthy_threshold=3,
-        ),
-    )
-
-    aws.lb.ListenerRule(
-        f"backoffice-frontend-{env}",
-        listener_arn=listener_arn,
-        priority=priority,
-        conditions=[
-            aws.lb.ListenerRuleConditionArgs(
-                host_header=aws.lb.ListenerRuleConditionHostHeaderArgs(
-                    values=[hostname]
-                )
-            ),
-        ],
-        actions=[
-            aws.lb.ListenerRuleActionArgs(
-                type="forward", target_group_arn=target_group.arn
-            )
-        ],
-    )
-
-    return aws.ecs.Service(
+    return _fargate_service(
         f"backoffice-frontend-{env}",
         name=name,
-        cluster=cluster_arn,
-        task_definition=task_definition.arn,
-        desired_count=1,
-        launch_type="FARGATE",
-        health_check_grace_period_seconds=HEALTH_GRACE_SECONDS,
-        network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
-            subnets=subnet_ids,
-            security_groups=[task_security_group_id],
-            assign_public_ip=True,
-        ),
-        load_balancers=[
-            aws.ecs.ServiceLoadBalancerArgs(
-                target_group_arn=target_group.arn,
-                container_name="backoffice-frontend",
-                container_port=BACKOFFICE_FRONTEND_PORT,
-            )
-        ],
-        opts=pulumi.ResourceOptions(
-            ignore_changes=["taskDefinition", "desiredCount"]
-        ),
+        target_group_name=target_group_name,
+        container_name="backoffice-frontend",
+        port=BACKOFFICE_FRONTEND_PORT,
+        container=container,
+        execution_role=execution,
+        vpc_id=vpc_id,
+        subnet_ids=subnet_ids,
+        task_security_group_id=task_security_group_id,
+        cluster_arn=cluster_arn,
+        listener_arn=listener_arn,
+        hostname=hostname,
+        priority=priority,
     )

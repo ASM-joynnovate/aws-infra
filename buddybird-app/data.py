@@ -1,12 +1,118 @@
 import pulumi
 import pulumi_aws as aws
 
+NAME_PREFIX = "jn-buddybird-v1"
+DOMAIN = "buddybird.xyz"
+
+CORS_ORIGINS = {
+    "local": ["http://localhost:3000"],
+    "dev": [f"https://dev.{DOMAIN}", f"https://dev-backoffice.{DOMAIN}"],
+    "prod": [f"https://{DOMAIN}", f"https://backoffice.{DOMAIN}"],
+}
+
 DB_ENGINE_VERSION = "17"
 DB_INSTANCE_CLASS = "db.t4g.micro"
 DB_STORAGE_GB = 20
 DB_BACKUP_RETENTION_DAYS = 7
 DB_NAME = "buddybird"
 DB_USER = "buddybird"
+
+
+def data_bucket(
+    env: str,
+    *,
+    account_id: str,
+    region: str,
+    cors_allowed_origins: list[str],
+) -> aws.s3.Bucket:
+    name = f"data-{env}"
+
+    bucket = aws.s3.Bucket(
+        name,
+        bucket=f"{NAME_PREFIX}-{name}-{account_id}-{region}",
+    )
+
+    aws.s3.BucketServerSideEncryptionConfiguration(
+        name,
+        bucket=bucket.id,
+        rules=[
+            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                    sse_algorithm="AES256"
+                )
+            )
+        ]
+    )
+
+    aws.s3.BucketPublicAccessBlock(
+        name,
+        bucket=bucket.id,
+        block_public_acls=True,
+        block_public_policy=True,
+        ignore_public_acls=True,
+        restrict_public_buckets=True
+    )
+
+    aws.s3.BucketOwnershipControls(
+        name,
+        bucket=bucket.id,
+        rule=aws.s3.BucketOwnershipControlsRuleArgs(
+            object_ownership="BucketOwnerEnforced"
+        )
+    )
+
+    aws.s3.BucketLifecycleConfiguration(
+        name,
+        bucket=bucket.id,
+        rules=[
+            aws.s3.BucketLifecycleConfigurationRuleArgs(
+                id="abort-incomplete-multipart-upload",
+                status="Enabled",
+                filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
+                abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
+                    days_after_initiation=7
+                ),
+            ),
+        ]
+    )
+
+    aws.s3.BucketPolicy(
+        f"{name}-tls-only",
+        bucket=bucket.id,
+        policy=pulumi.Output.json_dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "DenyInsecureTransport",
+                        "Effect": "Deny",
+                        "Principal": "*",
+                        "Action": "s3:*",
+                        "Resource": [
+                            bucket.arn,
+                            pulumi.Output.format("{0}/*", bucket.arn),
+                        ],
+                        "Condition": {"Bool": {"aws:SecureTransport": "false"}},
+                    }
+                ],
+            }
+        ),
+    )
+
+    aws.s3.BucketCorsConfiguration(
+        name,
+        bucket=bucket.id,
+        cors_rules=[
+            aws.s3.BucketCorsConfigurationCorsRuleArgs(
+                allowed_headers=["*"],
+                allowed_methods=["GET"],
+                allowed_origins=cors_allowed_origins,
+                expose_headers=["Content-Length", "Content-Type"],
+            )
+        ],
+    )
+
+    return bucket
 
 
 def db_subnet_group(name: str, subnet_ids) -> aws.rds.SubnetGroup:

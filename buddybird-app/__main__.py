@@ -4,18 +4,23 @@ import pulumi
 import pulumi_aws as aws
 import pulumi_cloudflare as cloudflare
 
-from data import app_secret, database, db_subnet_group
+from data import (
+    CORS_ORIGINS,
+    DOMAIN,
+    app_secret,
+    data_bucket,
+    database,
+    db_subnet_group,
+)
 from deploy import deploy_role, ecr_repository, site_deploy_role
 from service import api_service, backoffice_frontend_service
 from edge import distribution, site_bucket
 
-NAME_PREFIX = "jn-buddybird-v1"
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
 SITE_PREFIX = "jn-buddybird-site"
 ECS_CLUSTER_NAME = "jn-cluster"
 
-DOMAIN = "buddybird.xyz"
 CLOUDFLARE_ZONE_ID = "fa5a1e637498dd11b4bf43211181f9e8"
 RECORD_TTL = 300
 
@@ -40,105 +45,13 @@ config = pulumi.Config()
 infra = pulumi.StackReference(INFRA_STACK)
 
 
-def data_bucket(env: str, *, cors_allowed_origins: list[str]) -> aws.s3.Bucket:
-    name = f"data-{env}"
-
-    bucket = aws.s3.Bucket(
-        name,
-        bucket=f"{NAME_PREFIX}-{name}-{account_id}-{region}",
-    )
-
-    aws.s3.BucketServerSideEncryptionConfiguration(
-        name,
-        bucket=bucket.id,
-        rules=[
-            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                    sse_algorithm="AES256"
-                )
-            )
-        ]
-    )
-
-    aws.s3.BucketPublicAccessBlock(
-        name,
-        bucket=bucket.id,
-        block_public_acls=True,
-        block_public_policy=True,
-        ignore_public_acls=True,
-        restrict_public_buckets=True
-    )
-
-    aws.s3.BucketOwnershipControls(
-        name,
-        bucket=bucket.id,
-        rule=aws.s3.BucketOwnershipControlsRuleArgs(
-            object_ownership="BucketOwnerEnforced"
-        )
-    )
-
-    aws.s3.BucketLifecycleConfiguration(
-        name,
-        bucket=bucket.id,
-        rules=[
-            aws.s3.BucketLifecycleConfigurationRuleArgs(
-                id="abort-incomplete-multipart-upload",
-                status="Enabled",
-                filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
-                abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
-                    days_after_initiation=7
-                ),
-            ),
-        ]
-    )
-
-    aws.s3.BucketPolicy(
-        f"{name}-tls-only",
-        bucket=bucket.id,
-        policy=pulumi.Output.json_dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "DenyInsecureTransport",
-                        "Effect": "Deny",
-                        "Principal": "*",
-                        "Action": "s3:*",
-                        "Resource": [
-                            bucket.arn,
-                            pulumi.Output.format("{0}/*", bucket.arn),
-                        ],
-                        "Condition": {"Bool": {"aws:SecureTransport": "false"}},
-                    }
-                ],
-            }
-        ),
-    )
-
-    aws.s3.BucketCorsConfiguration(
-        name,
-        bucket=bucket.id,
-        cors_rules=[
-            aws.s3.BucketCorsConfigurationCorsRuleArgs(
-                allowed_headers=["*"],
-                allowed_methods=["GET"],
-                allowed_origins=cors_allowed_origins,
-                expose_headers=["Content-Length", "Content-Type"],
-            )
-        ],
-    )
-
-    return bucket
-
-
-CORS_ORIGINS = {
-    "local": ["http://localhost:3000"],
-    "dev": [f"https://dev.{DOMAIN}", f"https://dev-backoffice.{DOMAIN}"],
-    "prod": [f"https://{DOMAIN}", f"https://backoffice.{DOMAIN}"],
-}
-
 buckets = {
-    env: data_bucket(env, cors_allowed_origins=CORS_ORIGINS[env])
+    env: data_bucket(
+        env,
+        account_id=account_id,
+        region=region,
+        cors_allowed_origins=CORS_ORIGINS[env],
+    )
     for env in ("dev", "prod", "local")
 }
 

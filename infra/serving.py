@@ -3,8 +3,8 @@ import pulumi_aws as aws
 import pulumi_cloudflare as cloudflare
 
 CLOUDFRONT_CERTIFICATE_REGION = "us-east-1"
-TLS_POLICY = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-VALIDATION_RECORD_TTL = 60
+ALB_TLS_POLICY = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+ACM_VALIDATION_RECORD_TTL = 60
 
 
 class Serving(pulumi.ComponentResource):
@@ -54,7 +54,7 @@ class Serving(pulumi.ComponentResource):
             name=option.resource_record_name.apply(lambda value: value.rstrip(".")),
             type=option.resource_record_type,
             content=option.resource_record_value.apply(lambda value: value.rstrip(".")),
-            ttl=VALIDATION_RECORD_TTL,
+            ttl=ACM_VALIDATION_RECORD_TTL,
             proxied=False,
             comment="ACM domain validation",
             opts=child,
@@ -94,7 +94,7 @@ class Serving(pulumi.ComponentResource):
             load_balancer_arn=self.alb.arn,
             port=443,
             protocol="HTTPS",
-            ssl_policy=TLS_POLICY,
+            ssl_policy=ALB_TLS_POLICY,
             certificate_arn=alb_certificate_validation.certificate_arn,
             default_actions=[
                 aws.lb.ListenerDefaultActionArgs(

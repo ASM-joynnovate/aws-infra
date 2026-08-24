@@ -5,7 +5,7 @@ from network import Network
 from serving import Serving
 
 NAME_PREFIX = "jn"
-DOMAIN = "buddybird.xyz"
+BUDDYBIRD_ROOT_DOMAIN = "buddybird.xyz"
 CLOUDFLARE_ZONE_ID = "fa5a1e637498dd11b4bf43211181f9e8"
 
 ALB_LOG_PREFIX = "alb"
@@ -120,7 +120,7 @@ network = Network(
 
 serving = Serving(
     NAME_PREFIX,
-    domain=DOMAIN,
+    domain=BUDDYBIRD_ROOT_DOMAIN,
     zone_id=CLOUDFLARE_ZONE_ID,
     subnets=network.public_subnets,
     alb_security_group=network.alb_security_group,

@@ -6,7 +6,7 @@ import pulumi_cloudflare as cloudflare
 
 from data import (
     CORS_ORIGINS,
-    DOMAIN,
+    ROOT_DOMAIN,
     app_secret,
     data_bucket,
     database,
@@ -22,18 +22,18 @@ SITE_PREFIX = "jn-buddybird-site"
 ECS_CLUSTER_NAME = "jn-cluster"
 
 CLOUDFLARE_ZONE_ID = "fa5a1e637498dd11b4bf43211181f9e8"
-RECORD_TTL = 300
+DNS_RECORD_TTL = 300
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"
 
 API_ENVIRONMENTS = {
-    "prod": {"hostname": DOMAIN, "priority": 10},
-    "dev": {"hostname": f"dev.{DOMAIN}", "priority": 20},
+    "prod": {"hostname": ROOT_DOMAIN, "priority": 10},
+    "dev": {"hostname": f"dev.{ROOT_DOMAIN}", "priority": 20},
 }
 
 BACKOFFICE_FRONTEND_ENVIRONMENTS = {
-    "prod": {"hostname": f"backoffice.{DOMAIN}", "priority": 30},
-    "dev": {"hostname": f"dev-backoffice.{DOMAIN}", "priority": 40},
+    "prod": {"hostname": f"backoffice.{ROOT_DOMAIN}", "priority": 30},
+    "dev": {"hostname": f"dev-backoffice.{ROOT_DOMAIN}", "priority": 40},
 }
 
 INFRA_STACK = "organization/joynnovate-infra/prod"
@@ -137,7 +137,7 @@ cdn = distribution(
     bucket=site,
     alb_dns_name=infra.get_output("alb_dns_name"),
     certificate_arn=infra.get_output("cloudfront_certificate_arn"),
-    aliases=[DOMAIN, f"www.{DOMAIN}"],
+    aliases=[ROOT_DOMAIN, f"www.{ROOT_DOMAIN}"],
 )
 
 site_deploy = site_deploy_role(
@@ -148,11 +148,11 @@ site_deploy = site_deploy_role(
 )
 
 for label, hostname, target in (
-    ("root", DOMAIN, cdn.domain_name),
-    ("www", f"www.{DOMAIN}", cdn.domain_name),
-    ("dev", f"dev.{DOMAIN}", infra.get_output("alb_dns_name")),
-    ("backoffice", f"backoffice.{DOMAIN}", infra.get_output("alb_dns_name")),
-    ("dev-backoffice", f"dev-backoffice.{DOMAIN}", infra.get_output("alb_dns_name")),
+    ("root", ROOT_DOMAIN, cdn.domain_name),
+    ("www", f"www.{ROOT_DOMAIN}", cdn.domain_name),
+    ("dev", f"dev.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
+    ("backoffice", f"backoffice.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
+    ("dev-backoffice", f"dev-backoffice.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
 ):
     cloudflare.DnsRecord(
         label,
@@ -160,7 +160,7 @@ for label, hostname, target in (
         name=hostname,
         type="CNAME",
         content=target,
-        ttl=RECORD_TTL,
+        ttl=DNS_RECORD_TTL,
         proxied=False,
         comment="buddybird service",
     )

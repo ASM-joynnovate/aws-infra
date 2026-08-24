@@ -2,12 +2,12 @@ import pulumi
 import pulumi_aws as aws
 
 NAME_PREFIX = "jn-buddybird-v1"
-DOMAIN = "buddybird.xyz"
+ROOT_DOMAIN = "buddybird.xyz"
 
 CORS_ORIGINS = {
     "local": ["http://localhost:3000"],
-    "dev": [f"https://dev.{DOMAIN}", f"https://dev-backoffice.{DOMAIN}"],
-    "prod": [f"https://{DOMAIN}", f"https://backoffice.{DOMAIN}"],
+    "dev": [f"https://dev.{ROOT_DOMAIN}", f"https://dev-backoffice.{ROOT_DOMAIN}"],
+    "prod": [f"https://{ROOT_DOMAIN}", f"https://backoffice.{ROOT_DOMAIN}"],
 }
 
 DB_ENGINE_VERSION = "17"

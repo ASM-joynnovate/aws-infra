@@ -1,12 +1,14 @@
+import json
+
 import pulumi
 import pulumi_aws as aws
 
-PORT = 8000
+API_CONTAINER_PORT = 8000
 BACKOFFICE_FRONTEND_PORT = 3000
-CPU = "256"
-MEMORY = "512"
+TASK_CPU = "256"
+TASK_MEMORY = "512"
 HEALTH_PATH = "/api/healthz"
-PATH_PATTERN = "/api/*"
+API_PATH_PATTERN = "/api/*"
 LOG_RETENTION_DAYS = 30
 DEREGISTRATION_DELAY = 30
 HEALTH_GRACE_SECONDS = 60
@@ -58,7 +60,12 @@ def _execution_role(logical_name: str, name: str) -> aws.iam.Role:
     return execution
 
 
-def _roles(env, name, bucket, secret_arns):
+def _roles(
+    env: str,
+    name: str,
+    bucket: aws.s3.Bucket,
+    secret_arns: list[pulumi.Input[str]],
+) -> tuple[aws.iam.Role, aws.iam.Role]:
     execution = _execution_role(f"exec-{env}", name)
 
     aws.iam.RolePolicy(
@@ -110,7 +117,7 @@ def _fargate_service(
     target_group_name: str,
     container_name: str,
     port: int,
-    container: pulumi.Output,
+    container: pulumi.Output[str],
     execution_role: aws.iam.Role,
     task_role: aws.iam.Role | None = None,
     vpc_id: pulumi.Input[str],
@@ -125,8 +132,8 @@ def _fargate_service(
     task_definition = aws.ecs.TaskDefinition(
         logical_name,
         family=name,
-        cpu=CPU,
-        memory=MEMORY,
+        cpu=TASK_CPU,
+        memory=TASK_MEMORY,
         network_mode="awsvpc",
         requires_compatibilities=["FARGATE"],
         runtime_platform=aws.ecs.TaskDefinitionRuntimePlatformArgs(
@@ -135,7 +142,7 @@ def _fargate_service(
         ),
         execution_role_arn=execution_role.arn,
         task_role_arn=task_role.arn if task_role else None,
-        container_definitions=container.apply(pulumi.Output.json_dumps),
+        container_definitions=container,
     )
 
     target_group = aws.lb.TargetGroup(
@@ -243,12 +250,14 @@ def api_service(
         db_secret=db_secret_arn,
         app_secret=secret.arn,
     ).apply(
-        lambda a: [
+        lambda a: json.dumps([
             {
                 "name": "api",
                 "image": a["image"],
                 "essential": True,
-                "portMappings": [{"containerPort": PORT, "protocol": "tcp"}],
+                "portMappings": [
+                    {"containerPort": API_CONTAINER_PORT, "protocol": "tcp"}
+                ],
                 "environment": [
                     {"name": "BUDDYBIRD_ENV", "value": env},
                     {"name": "DB_HOST", "value": a["db_host"]},
@@ -297,7 +306,7 @@ def api_service(
                     },
                 },
             }
-        ]
+        ])
     )
 
     return _fargate_service(
@@ -305,7 +314,7 @@ def api_service(
         name=name,
         target_group_name=name,
         container_name="api",
-        port=PORT,
+        port=API_CONTAINER_PORT,
         container=container,
         execution_role=execution,
         task_role=task,
@@ -316,7 +325,7 @@ def api_service(
         listener_arn=listener_arn,
         hostname=hostname,
         priority=priority,
-        path_pattern=PATH_PATTERN,
+        path_pattern=API_PATH_PATTERN,
     )
 
 
@@ -340,7 +349,7 @@ def backoffice_frontend_service(
     execution = _execution_role(f"backoffice-frontend-exec-{env}", name)
 
     container = pulumi.Output.all(image=image, log_group=log_group.name).apply(
-        lambda a: [
+        lambda a: json.dumps([
             {
                 "name": "backoffice-frontend",
                 "image": a["image"],
@@ -357,7 +366,7 @@ def backoffice_frontend_service(
                     },
                 },
             }
-        ]
+        ])
     )
 
     return _fargate_service(

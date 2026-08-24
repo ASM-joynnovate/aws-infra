@@ -32,8 +32,8 @@ ECR_PUSH_ACTIONS = [
     "ecr:UploadLayerPart",
 ]
 
-UNTAGGED_EXPIRE_DAYS = 7
-IMAGE_LIMIT = 20
+ECR_UNTAGGED_EXPIRE_DAYS = 7
+ECR_IMAGE_LIMIT = 20
 
 
 def ecr_repository(name: str, logical_name: str) -> aws.ecr.Repository:
@@ -59,7 +59,7 @@ def ecr_repository(name: str, logical_name: str) -> aws.ecr.Repository:
                             "tagStatus": aws.ecr.LifecyclePolicyTagStatus.UNTAGGED,
                             "countType": aws.ecr.LifecyclePolicyCountType.SINCE_IMAGE_PUSHED,
                             "countUnit": "days",
-                            "countNumber": UNTAGGED_EXPIRE_DAYS,
+                            "countNumber": ECR_UNTAGGED_EXPIRE_DAYS,
                         },
                         "action": {"type": aws.ecr.LifecyclePolicyActionType.EXPIRE},
                     },
@@ -69,7 +69,7 @@ def ecr_repository(name: str, logical_name: str) -> aws.ecr.Repository:
                         "selection": {
                             "tagStatus": aws.ecr.LifecyclePolicyTagStatus.ANY,
                             "countType": aws.ecr.LifecyclePolicyCountType.IMAGE_COUNT_MORE_THAN,
-                            "countNumber": IMAGE_LIMIT,
+                            "countNumber": ECR_IMAGE_LIMIT,
                         },
                         "action": {"type": aws.ecr.LifecyclePolicyActionType.EXPIRE},
                     },
@@ -111,7 +111,14 @@ def _trust_policy(account_id: str, subs: list[str]) -> pulumi.Output[str]:
     ).json
 
 
-def _deploy_policy(account_id, region, repository_arn, cluster_arn, cluster_name, prefix):
+def _deploy_policy(
+    account_id: str,
+    region: str,
+    repository_arn: pulumi.Input[str],
+    cluster_arn: pulumi.Input[str],
+    cluster_name: str,
+    prefix: str,
+) -> pulumi.Output[str]:
     return aws.iam.get_policy_document_output(
         statements=[
             GetPolicyDocumentStatementArgs(
@@ -191,13 +198,13 @@ def _deploy_policy(account_id, region, repository_arn, cluster_arn, cluster_name
 
 def deploy_role(
     *,
-    name,
-    account_id,
-    region,
-    repository_arn,
-    cluster_arn,
-    cluster_name,
-    prefix,
+    name: str,
+    account_id: str,
+    region: str,
+    repository_arn: pulumi.Input[str],
+    cluster_arn: pulumi.Input[str],
+    cluster_name: str,
+    prefix: str,
 ) -> aws.iam.Role:
     role = aws.iam.Role(
         "deploy",
@@ -219,10 +226,10 @@ def deploy_role(
 
 def site_deploy_role(
     *,
-    name,
-    account_id,
-    bucket_arn,
-    distribution_arn,
+    name: str,
+    account_id: str,
+    bucket_arn: pulumi.Input[str],
+    distribution_arn: pulumi.Input[str],
 ) -> aws.iam.Role:
     role = aws.iam.Role(
         "site-deploy",

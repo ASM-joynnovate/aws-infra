@@ -56,22 +56,22 @@ def ecr_repository(name: str, logical_name: str) -> aws.ecr.Repository:
                         "rulePriority": 1,
                         "description": "Expire untagged images",
                         "selection": {
-                            "tagStatus": "untagged",
-                            "countType": "sinceImagePushed",
+                            "tagStatus": aws.ecr.LifecyclePolicyTagStatus.UNTAGGED,
+                            "countType": aws.ecr.LifecyclePolicyCountType.SINCE_IMAGE_PUSHED,
                             "countUnit": "days",
                             "countNumber": UNTAGGED_EXPIRE_DAYS,
                         },
-                        "action": {"type": "expire"},
+                        "action": {"type": aws.ecr.LifecyclePolicyActionType.EXPIRE},
                     },
                     {
                         "rulePriority": 2,
                         "description": "Keep recent images only",
                         "selection": {
-                            "tagStatus": "any",
-                            "countType": "imageCountMoreThan",
+                            "tagStatus": aws.ecr.LifecyclePolicyTagStatus.ANY,
+                            "countType": aws.ecr.LifecyclePolicyCountType.IMAGE_COUNT_MORE_THAN,
                             "countNumber": IMAGE_LIMIT,
                         },
-                        "action": {"type": "expire"},
+                        "action": {"type": aws.ecr.LifecyclePolicyActionType.EXPIRE},
                     },
                 ]
             }

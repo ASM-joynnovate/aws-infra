@@ -121,7 +121,7 @@ class Network(pulumi.ComponentResource):
             aws.vpc.SecurityGroupIngressRule(
                 f"alb-{port}",
                 security_group_id=self.alb_security_group.id,
-                ip_protocol="tcp",
+                ip_protocol=aws.ec2.ProtocolType.TCP,
                 from_port=port,
                 to_port=port,
                 cidr_ipv4=ANY_IPV4,
@@ -159,7 +159,7 @@ class Network(pulumi.ComponentResource):
         aws.vpc.SecurityGroupIngressRule(
             "db-from-task",
             security_group_id=self.db_security_group.id,
-            ip_protocol="tcp",
+            ip_protocol=aws.ec2.ProtocolType.TCP,
             from_port=DB_PORT,
             to_port=DB_PORT,
             referenced_security_group_id=self.task_security_group.id,
@@ -180,7 +180,7 @@ class Network(pulumi.ComponentResource):
             aws.vpc.SecurityGroupIngressRule(
                 f"cache-from-task-{port}",
                 security_group_id=self.cache_security_group.id,
-                ip_protocol="tcp",
+                ip_protocol=aws.ec2.ProtocolType.TCP,
                 from_port=port,
                 to_port=port,
                 referenced_security_group_id=self.task_security_group.id,

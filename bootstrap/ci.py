@@ -18,9 +18,6 @@ CI_ROLE_PREFIX = "jn-ci"
 PREVIEW_ROLE_NAME = f"{CI_ROLE_PREFIX}-preview"
 PULUMI_ROLE_NAME = f"{CI_ROLE_PREFIX}-pulumi"
 
-READ_ONLY_POLICY_ARN = "arn:aws:iam::aws:policy/ReadOnlyAccess"
-POWER_USER_POLICY_ARN = "arn:aws:iam::aws:policy/PowerUserAccess"
-
 ROLE_WRITE_ACTIONS = [
     "iam:CreateRole",
     "iam:DeleteRole",
@@ -181,7 +178,7 @@ class CiRoles(pulumi.ComponentResource):
         aws.iam.RolePolicyAttachment(
             "ci-preview-read-only",
             role=self.preview_role.name,
-            policy_arn=READ_ONLY_POLICY_ARN,
+            policy_arn=aws.iam.ManagedPolicy.READ_ONLY_ACCESS,
             opts=child,
         )
 
@@ -203,7 +200,7 @@ class CiRoles(pulumi.ComponentResource):
         aws.iam.RolePolicyAttachment(
             "ci-pulumi-power-user",
             role=self.pulumi_role.name,
-            policy_arn=POWER_USER_POLICY_ARN,
+            policy_arn=aws.iam.ManagedPolicy.POWER_USER_ACCESS,
             opts=child,
         )
 

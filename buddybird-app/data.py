@@ -11,7 +11,6 @@ CORS_ORIGINS = {
 }
 
 DB_ENGINE_VERSION = "17"
-DB_INSTANCE_CLASS = "db.t4g.micro"
 DB_STORAGE_GB = 20
 DB_BACKUP_RETENTION_DAYS = 7
 DB_NAME = "buddybird"
@@ -131,11 +130,11 @@ def database(
     return aws.rds.Instance(
         f"db-{env}",
         identifier=name,
-        engine="postgres",
+        engine=aws.rds.EngineType.POSTGRES,
         engine_version=DB_ENGINE_VERSION,
-        instance_class=DB_INSTANCE_CLASS,
+        instance_class=aws.rds.InstanceType.T4_G_MICRO,
         allocated_storage=DB_STORAGE_GB,
-        storage_type="gp3",
+        storage_type=aws.rds.StorageType.GP3,
         storage_encrypted=True,
         db_name=DB_NAME,
         username=DB_USER,

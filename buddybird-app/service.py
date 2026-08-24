@@ -15,11 +15,6 @@ AUTH_ALGORITHM = "HS256"
 AUTH_ACCESS_TOKEN_EXPIRE_MINUTES = 10080
 AUTH_REFRESH_TOKEN_EXPIRE_MINUTES = 20160
 
-EXECUTION_POLICY_ARN = (
-    "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-)
-ECS_TASK_PRINCIPAL = "ecs-tasks.amazonaws.com"
-
 S3_OBJECT_ACTIONS = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
 
 
@@ -31,7 +26,7 @@ def _assume_role_policy() -> str:
                 actions=["sts:AssumeRole"],
                 principals=[
                     aws.iam.GetPolicyDocumentStatementPrincipalArgs(
-                        type="Service", identifiers=[ECS_TASK_PRINCIPAL]
+                        type="Service", identifiers=["ecs-tasks.amazonaws.com"]
                     )
                 ],
             )
@@ -57,7 +52,7 @@ def _execution_role(logical_name: str, name: str) -> aws.iam.Role:
     aws.iam.RolePolicyAttachment(
         logical_name,
         role=execution.name,
-        policy_arn=EXECUTION_POLICY_ARN,
+        policy_arn=aws.iam.ManagedPolicy.AMAZON_ECS_TASK_EXECUTION_ROLE_POLICY,
     )
 
     return execution

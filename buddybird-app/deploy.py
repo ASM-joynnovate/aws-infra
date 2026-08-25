@@ -15,6 +15,7 @@ OIDC_AUDIENCE = "sts.amazonaws.com"
 SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-api@1262535317"
 DEPLOY_SUBS = [
     f"{SUB_PREFIX}:ref:refs/heads/main",
+    f"{SUB_PREFIX}:ref:refs/heads/dev",
     f"{SUB_PREFIX}:environment:prod",
 ]
 
@@ -27,6 +28,7 @@ ECR_PUSH_ACTIONS = [
     "ecr:BatchCheckLayerAvailability",
     "ecr:BatchGetImage",
     "ecr:CompleteLayerUpload",
+    "ecr:DescribeImages",
     "ecr:GetDownloadUrlForLayer",
     "ecr:InitiateLayerUpload",
     "ecr:PutImage",
@@ -35,6 +37,23 @@ ECR_PUSH_ACTIONS = [
 
 ECR_UNTAGGED_EXPIRE_DAYS = 7
 ECR_IMAGE_LIMIT = 20
+
+ROTATION_REDEPLOY_TIMEOUT_SECONDS = 10
+ROTATION_REDEPLOY_CODE = """\
+import os
+
+import boto3
+
+ecs = boto3.client("ecs")
+
+
+def handler(event, context):
+    ecs.update_service(
+        cluster=os.environ["CLUSTER"],
+        service=os.environ["SERVICE"],
+        force_new_deployment=True,
+    )
+"""
 
 
 def ecr_repository(name: str, logical_name: str) -> aws.ecr.Repository:
@@ -223,6 +242,96 @@ def deploy_role(
     )
 
     return role
+
+
+def rotation_redeploy(
+    env: str,
+    *,
+    name: str,
+    secret_arn: pulumi.Input[str],
+    cluster_arn: pulumi.Input[str],
+    service: aws.ecs.Service,
+) -> None:
+    role = aws.iam.Role(
+        f"rotation-{env}",
+        name=f"{name}-rotation",
+        description=f"buddybird-api {env} redeploy on RDS password rotation",
+        assume_role_policy=aws.iam.get_policy_document(
+            statements=[
+                GetPolicyDocumentStatementArgs(
+                    effect=PolicyStatementEffect.ALLOW,
+                    actions=["sts:AssumeRole"],
+                    principals=[
+                        GetPolicyDocumentStatementPrincipalArgs(
+                            type="Service", identifiers=["lambda.amazonaws.com"]
+                        )
+                    ],
+                )
+            ]
+        ).json,
+    )
+
+    aws.iam.RolePolicyAttachment(
+        f"rotation-{env}",
+        role=role.name,
+        policy_arn=aws.iam.ManagedPolicy.AWS_LAMBDA_BASIC_EXECUTION_ROLE,
+    )
+
+    aws.iam.RolePolicy(
+        f"rotation-{env}",
+        role=role.name,
+        policy=aws.iam.get_policy_document_output(
+            statements=[
+                GetPolicyDocumentStatementArgs(
+                    effect=PolicyStatementEffect.ALLOW,
+                    actions=["ecs:UpdateService"],
+                    resources=[service.id],
+                )
+            ]
+        ).json,
+    )
+
+    function = aws.lambda_.Function(
+        f"rotation-{env}",
+        name=f"{name}-rotation",
+        role=role.arn,
+        runtime=aws.lambda_.Runtime.PYTHON3D14,
+        handler="index.handler",
+        timeout=ROTATION_REDEPLOY_TIMEOUT_SECONDS,
+        code=pulumi.AssetArchive(
+            {"index.py": pulumi.StringAsset(ROTATION_REDEPLOY_CODE)}
+        ),
+        environment=aws.lambda_.FunctionEnvironmentArgs(
+            variables={"CLUSTER": cluster_arn, "SERVICE": service.name}
+        ),
+    )
+
+    rule = aws.cloudwatch.EventRule(
+        f"rotation-{env}",
+        name=f"{name}-rotation",
+        event_pattern=pulumi.Output.json_dumps(
+            {
+                "source": ["aws.secretsmanager"],
+                "detail-type": ["Secret Label Updated"],
+                "resources": [secret_arn],
+                "detail": {"labelUpdated": ["AWSCURRENT"]},
+            }
+        ),
+    )
+
+    aws.lambda_.Permission(
+        f"rotation-{env}",
+        action="lambda:InvokeFunction",
+        function=function.name,
+        principal="events.amazonaws.com",
+        source_arn=rule.arn,
+    )
+
+    aws.cloudwatch.EventTarget(
+        f"rotation-{env}",
+        rule=rule.name,
+        arn=function.arn,
+    )
 
 
 def site_deploy_role(

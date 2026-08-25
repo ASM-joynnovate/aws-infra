@@ -12,7 +12,7 @@ from data import (
     database,
     db_subnet_group,
 )
-from deploy import deploy_role, ecr_repository, site_deploy_role
+from deploy import deploy_role, ecr_repository, rotation_redeploy, site_deploy_role
 from service import api_service, backoffice_frontend_service
 from edge import distribution, site_bucket
 
@@ -92,7 +92,7 @@ for env, api_settings in API_ENVIRONMENTS.items():
 
     backoffice_frontend_settings = BACKOFFICE_FRONTEND_ENVIRONMENTS[env]
 
-    api_service(
+    api = api_service(
         env,
         name=name,
         image=repository.repository_url.apply(
@@ -112,6 +112,14 @@ for env, api_settings in API_ENVIRONMENTS.items():
         cors_origin=json.dumps(
             [f"https://{backoffice_frontend_settings['hostname']}"]
         ),
+    )
+
+    rotation_redeploy(
+        env,
+        name=name,
+        secret_arn=db.master_user_secrets[0].secret_arn,
+        cluster_arn=infra.get_output("cluster_arn"),
+        service=api,
     )
 
     backoffice_frontend_service(

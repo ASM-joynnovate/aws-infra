@@ -7,7 +7,7 @@ buddybird 전용 인프라의 구성과 배포 절차를 다룬다.
 | 파일 | 리소스 |
 | --- | --- |
 | `__main__.py` | - 데이터 버킷<br>- 환경별 구성<br>- DNS 레코드<br>- 출력값 |
-| `deploy.py` | - Elastic Container Registry(ECR) 저장소<br>- 배포 역할 |
+| `deploy.py` | - Elastic Container Registry(ECR) 저장소<br>- 배포 역할<br>- RDS 비밀번호 rotation 재배포 Lambda |
 | `data.py` | - Relational Database Service(RDS) 서브넷 그룹<br>- RDS 인스턴스<br>- 앱 시크릿 |
 | `service.py` | - 로그 그룹<br>- Identity and Access Management(IAM) 역할<br>- task definition<br>- 타깃 그룹<br>- 리스너 규칙<br>- Elastic Container Service(ECS) 서비스 |
 | `edge.py` | - 사이트 버킷<br>- CloudFront<br>- Origin Access Control(OAC)<br>- rewrite 함수 |
@@ -35,6 +35,7 @@ buddybird 전용 인프라의 구성과 배포 절차를 다룬다.
 | api: task role | `jn-buddybird-api-<env>-task` |
 | api: execution role | `jn-buddybird-api-<env>-exec` |
 | api: 로그 그룹 | `/ecs/jn-buddybird-api-<env>` |
+| api: rotation 재배포 Lambda, 역할, EventBridge 규칙 | `jn-buddybird-api-<env>-rotation` |
 | 데이터 버킷 | `jn-buddybird-v1-data-<env>-<계정>-<리전>` |
 | backoffice frontend: ECS 서비스, task definition family | `jn-buddybird-backoffice-frontend-<env>` |
 | backoffice frontend: 타깃 그룹 | `jn-buddybird-bo-fe-<env>` |
@@ -71,6 +72,7 @@ GitHub Actions OpenID Connect(OIDC)용으로 정의한 역할이다.
 
 - 이름: `jn-buddybird-api-deploy`
 - `buddybird-api` 레포, `ref:refs/heads/main`
+- `buddybird-api` 레포, `ref:refs/heads/dev`
 - `buddybird-api` 레포, `environment:prod`
 
 #### 권한
@@ -78,7 +80,7 @@ GitHub Actions OpenID Connect(OIDC)용으로 정의한 역할이다.
 | 대상 | 액션 |
 | --- | --- |
 | `*` | - `ecr:GetAuthorizationToken`<br>- `ecs:RegisterTaskDefinition`<br>- `ecs:DescribeTaskDefinition` |
-| ECR 저장소 | - 레이어 업로드<br>- `ecr:PutImage` |
+| ECR 저장소 | - 레이어 업로드<br>- `ecr:PutImage`<br>- `ecr:DescribeImages` |
 | ECS 서비스 `jn-buddybird-api-*` | - `ecs:UpdateService`<br>- `ecs:DescribeServices` |
 | task definition `jn-buddybird-api-*` | `ecs:RunTask` |
 | task | `ecs:DescribeTasks` (클러스터 Amazon Resource Name(ARN) 조건) |
@@ -95,6 +97,16 @@ GitHub Actions OpenID Connect(OIDC)용으로 정의한 역할이다.
 | 백업 보존 | 7일 |
 | 비밀번호 | `manage_master_user_password` |
 | 서브넷 | private, 서브넷 그룹 환경 공유 |
+
+### 비밀번호 rotation 재배포
+
+RDS 관리 시크릿의 `AWSCURRENT` 라벨이 이동하면 api 서비스를 force new deployment로 갱신한다.
+
+| 리소스 | 값 |
+| --- | --- |
+| EventBridge 규칙 | `Secret Label Updated`, `labelUpdated: AWSCURRENT`, `resources`에 RDS 관리 시크릿 ARN |
+| Lambda | Python 3.14, `ecs:UpdateService` 호출 |
+| Lambda 역할 권한 | 해당 환경 ECS 서비스에 `ecs:UpdateService`, `AWSLambdaBasicExecutionRole` |
 
 ### 앱 시크릿
 
@@ -137,6 +149,7 @@ GitHub Actions OpenID Connect(OIDC)용으로 정의한 역할이다.
 | 포트 | 8000 |
 | 헬스체크 | `/api/healthz` |
 | 서브넷 | public, `assign_public_ip` |
+| circuit breaker | 활성, 실패 시 자동 롤백 |
 
 ### 환경 변수
 
@@ -190,6 +203,7 @@ task role, 환경 변수, 시크릿은 없고 포트 3000을 사용한다.
 | 헬스체크 | `/api/healthz` |
 | 타깃 그룹 이름 | `jn-buddybird-bo-fe-<env>` |
 | 역할 | execution role만 사용 |
+| circuit breaker | 활성, 실패 시 자동 롤백 |
 
 ## 랜딩 사이트
 
@@ -264,7 +278,8 @@ prod RDS에 `protect=True`와 `deletion_protection`을 적용한다.
 
 ### 분담
 
-모든 서비스를 사람이 로컬에서 빌드하고 배포한다.
+api는 `buddybird-api` 레포의 GitHub Actions가 배포한다.
+backoffice frontend는 사람이 로컬에서 빌드하고 배포한다.
 이 스택에서 컨테이너 정의를 변경한 경우 `pulumi up` 후 서비스를 수동으로 갱신한다.
 
 ```bash
@@ -272,13 +287,20 @@ aws ecs update-service --cluster jn-cluster --service <서비스> \
   --task-definition <최신 revision> --force-new-deployment
 ```
 
-### ECS 이미지 배포
+### api 배포
+
+| 브랜치 | 동작 |
+| --- | --- |
+| `dev` | - `pyproject.toml` 버전 태그가 ECR에 없어야 진행<br>- 이미지 빌드와 ECR 푸시<br>- 마이그레이션 task 실행<br>- dev 서비스 갱신 |
+| `main` | - 같은 버전 태그가 ECR에 있어야 진행<br>- 마이그레이션 task 실행<br>- prod 서비스 갱신 |
+
+### backoffice frontend 배포
 
 1. ECR에 이미지 푸시
 2. 실행 중인 리비전의 task definition을 복제해 새 이미지 태그로 등록
 3. 서비스 갱신
 
-backoffice frontend를 빌드할 때 환경별 `NEXT_PUBLIC_API_URL`을 빌드 인자로 전달한다.
+빌드할 때 환경별 `NEXT_PUBLIC_API_URL`을 빌드 인자로 전달한다.
 
 ### 랜딩 사이트 배포
 

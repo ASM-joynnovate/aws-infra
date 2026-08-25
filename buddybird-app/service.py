@@ -199,6 +199,9 @@ def _fargate_service(
         desired_count=1,
         launch_type="FARGATE",
         health_check_grace_period_seconds=HEALTH_GRACE_SECONDS,
+        deployment_circuit_breaker=aws.ecs.ServiceDeploymentCircuitBreakerArgs(
+            enable=True, rollback=True
+        ),
         network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
             subnets=subnet_ids,
             security_groups=[task_security_group_id],

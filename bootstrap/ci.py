@@ -87,6 +87,12 @@ def _preview_policy(state_bucket_arn, secrets_key_arn):
                 actions=["kms:Decrypt"],
                 resources=[secrets_key_arn],
             ),
+            GetPolicyDocumentStatementArgs(
+                sid="ReadSecretValues",
+                effect="Allow",
+                actions=["secretsmanager:GetSecretValue"],
+                resources=["*"],
+            ),
         ]
     ).json
 

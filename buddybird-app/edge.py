@@ -1,6 +1,8 @@
 import pulumi
 import pulumi_aws as aws
 
+from data import _harden_bucket
+
 API_PATH_PATTERN = "/api/*"
 SITE_ERROR_CACHE_TTL = 60
 
@@ -32,36 +34,7 @@ function handler(event) {
 
 def site_bucket(name: str) -> aws.s3.Bucket:
     bucket = aws.s3.Bucket("site", bucket=name)
-
-    aws.s3.BucketServerSideEncryptionConfiguration(
-        "site",
-        bucket=bucket.id,
-        rules=[
-            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                    sse_algorithm="AES256"
-                )
-            )
-        ],
-    )
-
-    aws.s3.BucketPublicAccessBlock(
-        "site",
-        bucket=bucket.id,
-        block_public_acls=True,
-        block_public_policy=True,
-        ignore_public_acls=True,
-        restrict_public_buckets=True,
-    )
-
-    aws.s3.BucketOwnershipControls(
-        "site",
-        bucket=bucket.id,
-        rule=aws.s3.BucketOwnershipControlsRuleArgs(
-            object_ownership="BucketOwnerEnforced"
-        ),
-    )
-
+    _harden_bucket("site", bucket)
     return bucket
 
 

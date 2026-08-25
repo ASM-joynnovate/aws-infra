@@ -10,6 +10,38 @@ CORS_ORIGINS = {
     "prod": [f"https://{ROOT_DOMAIN}", f"https://backoffice.{ROOT_DOMAIN}"],
 }
 
+
+def _harden_bucket(logical_name: str, bucket: aws.s3.Bucket) -> None:
+    aws.s3.BucketServerSideEncryptionConfiguration(
+        logical_name,
+        bucket=bucket.id,
+        rules=[
+            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                    sse_algorithm="AES256"
+                )
+            )
+        ],
+    )
+
+    aws.s3.BucketPublicAccessBlock(
+        logical_name,
+        bucket=bucket.id,
+        block_public_acls=True,
+        block_public_policy=True,
+        ignore_public_acls=True,
+        restrict_public_buckets=True,
+    )
+
+    aws.s3.BucketOwnershipControls(
+        logical_name,
+        bucket=bucket.id,
+        rule=aws.s3.BucketOwnershipControlsRuleArgs(
+            object_ownership="BucketOwnerEnforced"
+        ),
+    )
+
+
 DB_ENGINE_VERSION = "17"
 DB_STORAGE_GB = 20
 DB_BACKUP_RETENTION_DAYS = 7
@@ -32,34 +64,7 @@ def data_bucket(
         opts=pulumi.ResourceOptions(protect=True),
     )
 
-    aws.s3.BucketServerSideEncryptionConfiguration(
-        name,
-        bucket=bucket.id,
-        rules=[
-            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                    sse_algorithm="AES256"
-                )
-            )
-        ]
-    )
-
-    aws.s3.BucketPublicAccessBlock(
-        name,
-        bucket=bucket.id,
-        block_public_acls=True,
-        block_public_policy=True,
-        ignore_public_acls=True,
-        restrict_public_buckets=True
-    )
-
-    aws.s3.BucketOwnershipControls(
-        name,
-        bucket=bucket.id,
-        rule=aws.s3.BucketOwnershipControlsRuleArgs(
-            object_ownership="BucketOwnerEnforced"
-        )
-    )
+    _harden_bucket(name, bucket)
 
     aws.s3.BucketVersioning(
         name,

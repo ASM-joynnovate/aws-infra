@@ -84,7 +84,17 @@ class Network(pulumi.ComponentResource):
             opts=pulumi.ResourceOptions(parent=self, depends_on=[log_bucket_policy]),
         )
 
-        self.register_outputs({})
+        self.register_outputs(
+            {
+                "vpc": self.vpc,
+                "public_subnets": self.public_subnets,
+                "private_subnets": self.private_subnets,
+                "alb_security_group": self.alb_security_group,
+                "task_security_group": self.task_security_group,
+                "db_security_group": self.db_security_group,
+                "cache_security_group": self.cache_security_group,
+            }
+        )
 
     def _subnets(self, name, azs, cidrs, tier, route_table, public, child):
         subnets = []

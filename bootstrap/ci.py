@@ -211,4 +211,9 @@ class CiRoles(pulumi.ComponentResource):
             opts=child,
         )
 
-        self.register_outputs({})
+        self.register_outputs(
+            {
+                "preview_role": self.preview_role,
+                "pulumi_role": self.pulumi_role,
+            }
+        )

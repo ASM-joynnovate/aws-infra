@@ -127,4 +127,11 @@ class Serving(pulumi.ComponentResource):
             opts=child,
         )
 
-        self.register_outputs({})
+        self.register_outputs(
+            {
+                "cluster": self.cluster,
+                "cloudfront_certificate": self.cloudfront_certificate,
+                "alb": self.alb,
+                "https_listener": self.https_listener,
+            }
+        )

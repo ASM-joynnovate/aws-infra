@@ -1,5 +1,10 @@
 import pulumi
 import pulumi_aws as aws
+from pulumi_aws.iam import (
+    GetPolicyDocumentStatementArgs,
+    GetPolicyDocumentStatementConditionArgs,
+    GetPolicyDocumentStatementPrincipalArgs,
+)
 
 from ci import CiRoles
 
@@ -82,24 +87,32 @@ aws.s3.BucketLifecycleConfiguration(
 aws.s3.BucketPolicy(
     "state-tls-only",
     bucket=state.id,
-    policy=pulumi.Output.json_dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "DenyInsecureTransport",
-                    "Effect": "Deny",
-                    "Principal": "*",
-                    "Action": "s3:*",
-                    "Resource": [
-                        state.arn,
-                        pulumi.Output.format("{0}/*", state.arn),
-                    ],
-                    "Condition": {"Bool": {"aws:SecureTransport": "false"}},
-                }
-            ],
-        }
-    ),
+    policy=aws.iam.get_policy_document_output(
+        statements=[
+            GetPolicyDocumentStatementArgs(
+                sid="DenyInsecureTransport",
+                effect="Deny",
+                principals=[
+                    GetPolicyDocumentStatementPrincipalArgs(
+                        type="*",
+                        identifiers=["*"],
+                    )
+                ],
+                actions=["s3:*"],
+                resources=[
+                    state.arn,
+                    pulumi.Output.format("{0}/*", state.arn),
+                ],
+                conditions=[
+                    GetPolicyDocumentStatementConditionArgs(
+                        test="Bool",
+                        variable="aws:SecureTransport",
+                        values=["false"],
+                    )
+                ],
+            )
+        ]
+    ).json,
 )
 
 secrets_key = aws.kms.Key(

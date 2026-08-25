@@ -87,6 +87,12 @@ def _preview_policy(state_bucket_arn, secrets_key_arn):
                 actions=["kms:Decrypt"],
                 resources=[secrets_key_arn],
             ),
+            GetPolicyDocumentStatementArgs(
+                sid="ReadSecretValues",
+                effect="Allow",
+                actions=["secretsmanager:GetSecretValue"],
+                resources=["*"],
+            ),
         ]
     ).json
 
@@ -211,4 +217,9 @@ class CiRoles(pulumi.ComponentResource):
             opts=child,
         )
 
-        self.register_outputs({})
+        self.register_outputs(
+            {
+                "preview_role": self.preview_role,
+                "pulumi_role": self.pulumi_role,
+            }
+        )

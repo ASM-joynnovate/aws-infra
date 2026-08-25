@@ -1,0 +1,21 @@
+name: infra up
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: pulumi-joynnovate-infra-prod
+  cancel-in-progress: false
+
+jobs:
+  up:
+    uses: ./.github/workflows/_pulumi-up.yml
+    with:
+      work-dir: infra
+      stack-name: organization/joynnovate-infra/prod
+      iam-role-suffix: pulumi
+      environment: prod

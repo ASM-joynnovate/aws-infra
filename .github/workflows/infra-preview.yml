@@ -1,0 +1,25 @@
+name: infra preview
+
+on:
+  pull_request:
+    paths:
+      - infra/**
+      - .github/workflows/infra-preview.yml
+      - .github/workflows/_pulumi-preview.yml
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: pulumi-joynnovate-infra-prod
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    uses: ./.github/workflows/_pulumi-preview.yml
+    with:
+      work-dir: infra
+      stack-name: organization/joynnovate-infra/prod
+      iam-role-suffix: preview

@@ -1,5 +1,12 @@
 import pulumi
 import pulumi_aws as aws
+from pulumi_aws.iam import (
+    GetPolicyDocumentStatementArgs,
+    GetPolicyDocumentStatementConditionArgs,
+    GetPolicyDocumentStatementPrincipalArgs,
+)
+
+from data import _harden_bucket
 
 API_PATH_PATTERN = "/api/*"
 SITE_ERROR_CACHE_TTL = 60
@@ -32,36 +39,7 @@ function handler(event) {
 
 def site_bucket(name: str) -> aws.s3.Bucket:
     bucket = aws.s3.Bucket("site", bucket=name)
-
-    aws.s3.BucketServerSideEncryptionConfiguration(
-        "site",
-        bucket=bucket.id,
-        rules=[
-            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                    sse_algorithm="AES256"
-                )
-            )
-        ],
-    )
-
-    aws.s3.BucketPublicAccessBlock(
-        "site",
-        bucket=bucket.id,
-        block_public_acls=True,
-        block_public_policy=True,
-        ignore_public_acls=True,
-        restrict_public_buckets=True,
-    )
-
-    aws.s3.BucketOwnershipControls(
-        "site",
-        bucket=bucket.id,
-        rule=aws.s3.BucketOwnershipControlsRuleArgs(
-            object_ownership="BucketOwnerEnforced"
-        ),
-    )
-
+    _harden_bucket("site", bucket)
     return bucket
 
 
@@ -171,32 +149,51 @@ def distribution(
     aws.s3.BucketPolicy(
         "site",
         bucket=bucket.id,
-        policy=pulumi.Output.json_dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "AllowCloudFrontRead",
-                        "Effect": "Allow",
-                        "Principal": {"Service": "cloudfront.amazonaws.com"},
-                        "Action": "s3:GetObject",
-                        "Resource": pulumi.Output.format("{0}/*", bucket.arn),
-                        "Condition": {"StringEquals": {"AWS:SourceArn": cdn.arn}},
-                    },
-                    {
-                        "Sid": "DenyInsecureTransport",
-                        "Effect": "Deny",
-                        "Principal": "*",
-                        "Action": "s3:*",
-                        "Resource": [
-                            bucket.arn,
-                            pulumi.Output.format("{0}/*", bucket.arn),
-                        ],
-                        "Condition": {"Bool": {"aws:SecureTransport": "false"}},
-                    },
-                ],
-            }
-        ),
+        policy=aws.iam.get_policy_document_output(
+            statements=[
+                GetPolicyDocumentStatementArgs(
+                    sid="AllowCloudFrontRead",
+                    effect="Allow",
+                    principals=[
+                        GetPolicyDocumentStatementPrincipalArgs(
+                            type="Service",
+                            identifiers=["cloudfront.amazonaws.com"],
+                        )
+                    ],
+                    actions=["s3:GetObject"],
+                    resources=[pulumi.Output.format("{0}/*", bucket.arn)],
+                    conditions=[
+                        GetPolicyDocumentStatementConditionArgs(
+                            test="StringEquals",
+                            variable="AWS:SourceArn",
+                            values=[cdn.arn],
+                        )
+                    ],
+                ),
+                GetPolicyDocumentStatementArgs(
+                    sid="DenyInsecureTransport",
+                    effect="Deny",
+                    principals=[
+                        GetPolicyDocumentStatementPrincipalArgs(
+                            type="*",
+                            identifiers=["*"],
+                        )
+                    ],
+                    actions=["s3:*"],
+                    resources=[
+                        bucket.arn,
+                        pulumi.Output.format("{0}/*", bucket.arn),
+                    ],
+                    conditions=[
+                        GetPolicyDocumentStatementConditionArgs(
+                            test="Bool",
+                            variable="aws:SecureTransport",
+                            values=["false"],
+                        )
+                    ],
+                ),
+            ]
+        ).json,
     )
 
     return cdn

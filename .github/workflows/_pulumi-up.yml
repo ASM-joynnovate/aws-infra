@@ -1,0 +1,42 @@
+name: pulumi up
+
+on:
+  workflow_call:
+    inputs:
+      work-dir:
+        required: true
+        type: string
+      stack-name:
+        required: true
+        type: string
+      iam-role-suffix:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+
+jobs:
+  up:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::198252712951:role/jn-ci-${{ inputs.iam-role-suffix }}
+          aws-region: ap-northeast-2
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          working-directory: ${{ inputs.work-dir }}
+          enable-cache: true
+
+      - uses: pulumi/actions@v7
+        with:
+          command: up
+          stack-name: ${{ inputs.stack-name }}
+          work-dir: ${{ inputs.work-dir }}
+          refresh: true

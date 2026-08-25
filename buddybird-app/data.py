@@ -1,5 +1,10 @@
 import pulumi
 import pulumi_aws as aws
+from pulumi_aws.iam import (
+    GetPolicyDocumentStatementArgs,
+    GetPolicyDocumentStatementConditionArgs,
+    GetPolicyDocumentStatementPrincipalArgs,
+)
 
 NAME_PREFIX = "jn-buddybird-v1"
 ROOT_DOMAIN = "buddybird.xyz"
@@ -9,6 +14,38 @@ CORS_ORIGINS = {
     "dev": [f"https://dev.{ROOT_DOMAIN}", f"https://dev-backoffice.{ROOT_DOMAIN}"],
     "prod": [f"https://{ROOT_DOMAIN}", f"https://backoffice.{ROOT_DOMAIN}"],
 }
+
+
+def _harden_bucket(logical_name: str, bucket: aws.s3.Bucket) -> None:
+    aws.s3.BucketServerSideEncryptionConfiguration(
+        logical_name,
+        bucket=bucket.id,
+        rules=[
+            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                    sse_algorithm="AES256"
+                )
+            )
+        ],
+    )
+
+    aws.s3.BucketPublicAccessBlock(
+        logical_name,
+        bucket=bucket.id,
+        block_public_acls=True,
+        block_public_policy=True,
+        ignore_public_acls=True,
+        restrict_public_buckets=True,
+    )
+
+    aws.s3.BucketOwnershipControls(
+        logical_name,
+        bucket=bucket.id,
+        rule=aws.s3.BucketOwnershipControlsRuleArgs(
+            object_ownership="BucketOwnerEnforced"
+        ),
+    )
+
 
 DB_ENGINE_VERSION = "17"
 DB_STORAGE_GB = 20
@@ -29,35 +66,17 @@ def data_bucket(
     bucket = aws.s3.Bucket(
         name,
         bucket=f"{NAME_PREFIX}-{name}-{account_id}-{region}",
+        opts=pulumi.ResourceOptions(protect=True),
     )
 
-    aws.s3.BucketServerSideEncryptionConfiguration(
-        name,
-        bucket=bucket.id,
-        rules=[
-            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                    sse_algorithm="AES256"
-                )
-            )
-        ]
-    )
+    _harden_bucket(name, bucket)
 
-    aws.s3.BucketPublicAccessBlock(
+    aws.s3.BucketVersioning(
         name,
         bucket=bucket.id,
-        block_public_acls=True,
-        block_public_policy=True,
-        ignore_public_acls=True,
-        restrict_public_buckets=True
-    )
-
-    aws.s3.BucketOwnershipControls(
-        name,
-        bucket=bucket.id,
-        rule=aws.s3.BucketOwnershipControlsRuleArgs(
-            object_ownership="BucketOwnerEnforced"
-        )
+        versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+            status="Enabled"
+        ),
     )
 
     aws.s3.BucketLifecycleConfiguration(
@@ -72,30 +91,46 @@ def data_bucket(
                     days_after_initiation=7
                 ),
             ),
+            aws.s3.BucketLifecycleConfigurationRuleArgs(
+                id="expire-noncurrent-versions",
+                status="Enabled",
+                filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
+                noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
+                    noncurrent_days=30
+                ),
+            ),
         ]
     )
 
     aws.s3.BucketPolicy(
         f"{name}-tls-only",
         bucket=bucket.id,
-        policy=pulumi.Output.json_dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "DenyInsecureTransport",
-                        "Effect": "Deny",
-                        "Principal": "*",
-                        "Action": "s3:*",
-                        "Resource": [
-                            bucket.arn,
-                            pulumi.Output.format("{0}/*", bucket.arn),
-                        ],
-                        "Condition": {"Bool": {"aws:SecureTransport": "false"}},
-                    }
-                ],
-            }
-        ),
+        policy=aws.iam.get_policy_document_output(
+            statements=[
+                GetPolicyDocumentStatementArgs(
+                    sid="DenyInsecureTransport",
+                    effect="Deny",
+                    principals=[
+                        GetPolicyDocumentStatementPrincipalArgs(
+                            type="*",
+                            identifiers=["*"],
+                        )
+                    ],
+                    actions=["s3:*"],
+                    resources=[
+                        bucket.arn,
+                        pulumi.Output.format("{0}/*", bucket.arn),
+                    ],
+                    conditions=[
+                        GetPolicyDocumentStatementConditionArgs(
+                            test="Bool",
+                            variable="aws:SecureTransport",
+                            values=["false"],
+                        )
+                    ],
+                )
+            ]
+        ).json,
     )
 
     aws.s3.BucketCorsConfiguration(

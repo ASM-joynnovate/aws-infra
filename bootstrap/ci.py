@@ -4,6 +4,7 @@ from pulumi_aws.iam import (
     GetPolicyDocumentStatementArgs,
     GetPolicyDocumentStatementConditionArgs,
     GetPolicyDocumentStatementPrincipalArgs,
+    PolicyStatementEffect,
 )
 
 OIDC_HOST = "token.actions.githubusercontent.com"
@@ -45,7 +46,7 @@ def _trust_policy(provider_arn, sub):
     return aws.iam.get_policy_document_output(
         statements=[
             GetPolicyDocumentStatementArgs(
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["sts:AssumeRoleWithWebIdentity"],
                 principals=[
                     GetPolicyDocumentStatementPrincipalArgs(
@@ -75,7 +76,7 @@ def _preview_policy(state_bucket_arn, secrets_key_arn):
         statements=[
             GetPolicyDocumentStatementArgs(
                 sid="StateLock",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["s3:PutObject", "s3:DeleteObject"],
                 resources=[
                     pulumi.Output.format("{0}/.pulumi/locks/*", state_bucket_arn)
@@ -83,13 +84,13 @@ def _preview_policy(state_bucket_arn, secrets_key_arn):
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DecryptStackSecrets",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["kms:Decrypt"],
                 resources=[secrets_key_arn],
             ),
             GetPolicyDocumentStatementArgs(
                 sid="ReadSecretValues",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["secretsmanager:GetSecretValue"],
                 resources=["*"],
             ),
@@ -102,7 +103,7 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
         statements=[
             GetPolicyDocumentStatementArgs(
                 sid="ManageServiceRoles",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=ROLE_WRITE_ACTIONS
                 + POLICY_WRITE_ACTIONS
                 + [
@@ -116,7 +117,7 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenyPersistentCredentials",
-                effect="Deny",
+                effect=PolicyStatementEffect.DENY,
                 actions=[
                     "iam:CreateUser",
                     "iam:CreateAccessKey",
@@ -127,7 +128,7 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenyOidcProviderChanges",
-                effect="Deny",
+                effect=PolicyStatementEffect.DENY,
                 actions=[
                     "iam:CreateOpenIDConnectProvider",
                     "iam:DeleteOpenIDConnectProvider",
@@ -141,19 +142,19 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenyCiRoleChanges",
-                effect="Deny",
+                effect=PolicyStatementEffect.DENY,
                 actions=ROLE_WRITE_ACTIONS,
                 resources=[f"arn:aws:iam::{account_id}:role/{CI_ROLE_PREFIX}-*"],
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenyStateBucketDeletion",
-                effect="Deny",
+                effect=PolicyStatementEffect.DENY,
                 actions=["s3:DeleteBucket"],
                 resources=[state_bucket_arn],
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DenySecretsKeyDestruction",
-                effect="Deny",
+                effect=PolicyStatementEffect.DENY,
                 actions=[
                     "kms:ScheduleKeyDeletion",
                     "kms:DisableKey",

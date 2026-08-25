@@ -4,6 +4,7 @@ from pulumi_aws.iam import (
     GetPolicyDocumentStatementArgs,
     GetPolicyDocumentStatementConditionArgs,
     GetPolicyDocumentStatementPrincipalArgs,
+    PolicyStatementEffect,
 )
 
 from data import _harden_bucket
@@ -153,7 +154,7 @@ def distribution(
             statements=[
                 GetPolicyDocumentStatementArgs(
                     sid="AllowCloudFrontRead",
-                    effect="Allow",
+                    effect=PolicyStatementEffect.ALLOW,
                     principals=[
                         GetPolicyDocumentStatementPrincipalArgs(
                             type="Service",
@@ -172,7 +173,7 @@ def distribution(
                 ),
                 GetPolicyDocumentStatementArgs(
                     sid="DenyInsecureTransport",
-                    effect="Deny",
+                    effect=PolicyStatementEffect.DENY,
                     principals=[
                         GetPolicyDocumentStatementPrincipalArgs(
                             type="*",

@@ -4,6 +4,7 @@ from pulumi_aws.iam import (
     GetPolicyDocumentStatementArgs,
     GetPolicyDocumentStatementConditionArgs,
     GetPolicyDocumentStatementPrincipalArgs,
+    PolicyStatementEffect,
 )
 
 from ci import CiRoles
@@ -91,7 +92,7 @@ aws.s3.BucketPolicy(
         statements=[
             GetPolicyDocumentStatementArgs(
                 sid="DenyInsecureTransport",
-                effect="Deny",
+                effect=PolicyStatementEffect.DENY,
                 principals=[
                     GetPolicyDocumentStatementPrincipalArgs(
                         type="*",

@@ -1,5 +1,10 @@
 import pulumi
 import pulumi_aws as aws
+from pulumi_aws.iam import (
+    GetPolicyDocumentStatementArgs,
+    GetPolicyDocumentStatementConditionArgs,
+    GetPolicyDocumentStatementPrincipalArgs,
+)
 
 from network import Network
 from serving import Serving
@@ -68,47 +73,79 @@ aws.s3.BucketLifecycleConfiguration(
 logs_policy = aws.s3.BucketPolicy(
     "logs",
     bucket=logs.id,
-    policy=pulumi.Output.json_dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "AlbAccessLogWrite",
-                    "Effect": "Allow",
-                    "Principal": {"Service": ALB_LOG_SERVICE},
-                    "Action": "s3:PutObject",
-                    "Resource": pulumi.Output.format(
+    policy=aws.iam.get_policy_document_output(
+        statements=[
+            GetPolicyDocumentStatementArgs(
+                sid="AlbAccessLogWrite",
+                effect="Allow",
+                principals=[
+                    GetPolicyDocumentStatementPrincipalArgs(
+                        type="Service",
+                        identifiers=[ALB_LOG_SERVICE],
+                    )
+                ],
+                actions=["s3:PutObject"],
+                resources=[
+                    pulumi.Output.format(
                         "{0}/{1}/AWSLogs/{2}/*", logs.arn, ALB_LOG_PREFIX, account_id
+                    )
+                ],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="FlowLogWrite",
+                effect="Allow",
+                principals=[
+                    GetPolicyDocumentStatementPrincipalArgs(
+                        type="Service",
+                        identifiers=[FLOW_LOG_SERVICE],
+                    )
+                ],
+                actions=["s3:PutObject"],
+                resources=[pulumi.Output.format("{0}/*", logs.arn)],
+                conditions=[
+                    GetPolicyDocumentStatementConditionArgs(
+                        test="StringEquals",
+                        variable="aws:SourceAccount",
+                        values=[account_id],
                     ),
-                },
-                {
-                    "Sid": "FlowLogWrite",
-                    "Effect": "Allow",
-                    "Principal": {"Service": FLOW_LOG_SERVICE},
-                    "Action": "s3:PutObject",
-                    "Resource": pulumi.Output.format("{0}/*", logs.arn),
-                    "Condition": {
-                        "StringEquals": {
-                            "aws:SourceAccount": account_id,
-                            "s3:x-amz-acl": "bucket-owner-full-control",
-                        },
-                        "ArnLike": {"aws:SourceArn": logs_source_arn},
-                    },
-                },
-                {
-                    "Sid": "FlowLogAclCheck",
-                    "Effect": "Allow",
-                    "Principal": {"Service": FLOW_LOG_SERVICE},
-                    "Action": "s3:GetBucketAcl",
-                    "Resource": logs.arn,
-                    "Condition": {
-                        "StringEquals": {"aws:SourceAccount": account_id},
-                        "ArnLike": {"aws:SourceArn": logs_source_arn},
-                    },
-                },
-            ],
-        }
-    ),
+                    GetPolicyDocumentStatementConditionArgs(
+                        test="StringEquals",
+                        variable="s3:x-amz-acl",
+                        values=["bucket-owner-full-control"],
+                    ),
+                    GetPolicyDocumentStatementConditionArgs(
+                        test="ArnLike",
+                        variable="aws:SourceArn",
+                        values=[logs_source_arn],
+                    ),
+                ],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="FlowLogAclCheck",
+                effect="Allow",
+                principals=[
+                    GetPolicyDocumentStatementPrincipalArgs(
+                        type="Service",
+                        identifiers=[FLOW_LOG_SERVICE],
+                    )
+                ],
+                actions=["s3:GetBucketAcl"],
+                resources=[logs.arn],
+                conditions=[
+                    GetPolicyDocumentStatementConditionArgs(
+                        test="StringEquals",
+                        variable="aws:SourceAccount",
+                        values=[account_id],
+                    ),
+                    GetPolicyDocumentStatementConditionArgs(
+                        test="ArnLike",
+                        variable="aws:SourceArn",
+                        values=[logs_source_arn],
+                    ),
+                ],
+            ),
+        ]
+    ).json,
 )
 
 network = Network(

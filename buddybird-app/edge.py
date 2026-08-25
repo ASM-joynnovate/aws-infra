@@ -1,5 +1,10 @@
 import pulumi
 import pulumi_aws as aws
+from pulumi_aws.iam import (
+    GetPolicyDocumentStatementArgs,
+    GetPolicyDocumentStatementConditionArgs,
+    GetPolicyDocumentStatementPrincipalArgs,
+)
 
 from data import _harden_bucket
 
@@ -144,32 +149,51 @@ def distribution(
     aws.s3.BucketPolicy(
         "site",
         bucket=bucket.id,
-        policy=pulumi.Output.json_dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "AllowCloudFrontRead",
-                        "Effect": "Allow",
-                        "Principal": {"Service": "cloudfront.amazonaws.com"},
-                        "Action": "s3:GetObject",
-                        "Resource": pulumi.Output.format("{0}/*", bucket.arn),
-                        "Condition": {"StringEquals": {"AWS:SourceArn": cdn.arn}},
-                    },
-                    {
-                        "Sid": "DenyInsecureTransport",
-                        "Effect": "Deny",
-                        "Principal": "*",
-                        "Action": "s3:*",
-                        "Resource": [
-                            bucket.arn,
-                            pulumi.Output.format("{0}/*", bucket.arn),
-                        ],
-                        "Condition": {"Bool": {"aws:SecureTransport": "false"}},
-                    },
-                ],
-            }
-        ),
+        policy=aws.iam.get_policy_document_output(
+            statements=[
+                GetPolicyDocumentStatementArgs(
+                    sid="AllowCloudFrontRead",
+                    effect="Allow",
+                    principals=[
+                        GetPolicyDocumentStatementPrincipalArgs(
+                            type="Service",
+                            identifiers=["cloudfront.amazonaws.com"],
+                        )
+                    ],
+                    actions=["s3:GetObject"],
+                    resources=[pulumi.Output.format("{0}/*", bucket.arn)],
+                    conditions=[
+                        GetPolicyDocumentStatementConditionArgs(
+                            test="StringEquals",
+                            variable="AWS:SourceArn",
+                            values=[cdn.arn],
+                        )
+                    ],
+                ),
+                GetPolicyDocumentStatementArgs(
+                    sid="DenyInsecureTransport",
+                    effect="Deny",
+                    principals=[
+                        GetPolicyDocumentStatementPrincipalArgs(
+                            type="*",
+                            identifiers=["*"],
+                        )
+                    ],
+                    actions=["s3:*"],
+                    resources=[
+                        bucket.arn,
+                        pulumi.Output.format("{0}/*", bucket.arn),
+                    ],
+                    conditions=[
+                        GetPolicyDocumentStatementConditionArgs(
+                            test="Bool",
+                            variable="aws:SecureTransport",
+                            values=["false"],
+                        )
+                    ],
+                ),
+            ]
+        ).json,
     )
 
     return cdn

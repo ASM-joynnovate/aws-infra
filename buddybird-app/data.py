@@ -1,5 +1,10 @@
 import pulumi
 import pulumi_aws as aws
+from pulumi_aws.iam import (
+    GetPolicyDocumentStatementArgs,
+    GetPolicyDocumentStatementConditionArgs,
+    GetPolicyDocumentStatementPrincipalArgs,
+)
 
 NAME_PREFIX = "jn-buddybird-v1"
 ROOT_DOMAIN = "buddybird.xyz"
@@ -100,24 +105,32 @@ def data_bucket(
     aws.s3.BucketPolicy(
         f"{name}-tls-only",
         bucket=bucket.id,
-        policy=pulumi.Output.json_dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "DenyInsecureTransport",
-                        "Effect": "Deny",
-                        "Principal": "*",
-                        "Action": "s3:*",
-                        "Resource": [
-                            bucket.arn,
-                            pulumi.Output.format("{0}/*", bucket.arn),
-                        ],
-                        "Condition": {"Bool": {"aws:SecureTransport": "false"}},
-                    }
-                ],
-            }
-        ),
+        policy=aws.iam.get_policy_document_output(
+            statements=[
+                GetPolicyDocumentStatementArgs(
+                    sid="DenyInsecureTransport",
+                    effect="Deny",
+                    principals=[
+                        GetPolicyDocumentStatementPrincipalArgs(
+                            type="*",
+                            identifiers=["*"],
+                        )
+                    ],
+                    actions=["s3:*"],
+                    resources=[
+                        bucket.arn,
+                        pulumi.Output.format("{0}/*", bucket.arn),
+                    ],
+                    conditions=[
+                        GetPolicyDocumentStatementConditionArgs(
+                            test="Bool",
+                            variable="aws:SecureTransport",
+                            values=["false"],
+                        )
+                    ],
+                )
+            ]
+        ).json,
     )
 
     aws.s3.BucketCorsConfiguration(

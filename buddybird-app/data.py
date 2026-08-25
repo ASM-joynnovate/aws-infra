@@ -29,6 +29,7 @@ def data_bucket(
     bucket = aws.s3.Bucket(
         name,
         bucket=f"{NAME_PREFIX}-{name}-{account_id}-{region}",
+        opts=pulumi.ResourceOptions(protect=True),
     )
 
     aws.s3.BucketServerSideEncryptionConfiguration(
@@ -60,6 +61,14 @@ def data_bucket(
         )
     )
 
+    aws.s3.BucketVersioning(
+        name,
+        bucket=bucket.id,
+        versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+            status="Enabled"
+        ),
+    )
+
     aws.s3.BucketLifecycleConfiguration(
         name,
         bucket=bucket.id,
@@ -70,6 +79,14 @@ def data_bucket(
                 filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
                 abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
                     days_after_initiation=7
+                ),
+            ),
+            aws.s3.BucketLifecycleConfigurationRuleArgs(
+                id="expire-noncurrent-versions",
+                status="Enabled",
+                filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
+                noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
+                    noncurrent_days=30
                 ),
             ),
         ]

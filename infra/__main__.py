@@ -26,6 +26,7 @@ logs_source_arn = f"arn:aws:logs:{region}:{account_id}:*"
 logs = aws.s3.Bucket(
     "logs",
     bucket=f"{NAME_PREFIX}-logs-{account_id}-{region}",
+    opts=pulumi.ResourceOptions(protect=True),
 )
 
 aws.s3.BucketServerSideEncryptionConfiguration(

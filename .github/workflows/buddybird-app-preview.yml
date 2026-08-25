@@ -1,0 +1,25 @@
+name: buddybird-app preview
+
+on:
+  pull_request:
+    paths:
+      - buddybird-app/**
+      - .github/workflows/buddybird-app-preview.yml
+      - .github/workflows/_pulumi-preview.yml
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: pulumi-buddybird-app-prod
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    uses: ./.github/workflows/_pulumi-preview.yml
+    with:
+      work-dir: buddybird-app
+      stack-name: organization/buddybird-app/prod
+      iam-role-suffix: preview

@@ -6,6 +6,7 @@ from pulumi_aws.iam import (
     GetPolicyDocumentStatementArgs,
     GetPolicyDocumentStatementConditionArgs,
     GetPolicyDocumentStatementPrincipalArgs,
+    PolicyStatementEffect,
 )
 
 OIDC_HOST = "token.actions.githubusercontent.com"
@@ -86,7 +87,7 @@ def _trust_policy(account_id: str, subs: list[str]) -> pulumi.Output[str]:
     return aws.iam.get_policy_document_output(
         statements=[
             GetPolicyDocumentStatementArgs(
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["sts:AssumeRoleWithWebIdentity"],
                 principals=[
                     GetPolicyDocumentStatementPrincipalArgs(
@@ -123,25 +124,25 @@ def _deploy_policy(
         statements=[
             GetPolicyDocumentStatementArgs(
                 sid="EcrLogin",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["ecr:GetAuthorizationToken"],
                 resources=["*"],
             ),
             GetPolicyDocumentStatementArgs(
                 sid="EcrPush",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=ECR_PUSH_ACTIONS,
                 resources=[repository_arn],
             ),
             GetPolicyDocumentStatementArgs(
                 sid="RegisterTaskDefinition",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"],
                 resources=["*"],
             ),
             GetPolicyDocumentStatementArgs(
                 sid="UpdateService",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["ecs:UpdateService", "ecs:DescribeServices"],
                 resources=[
                     f"arn:aws:ecs:{region}:{account_id}:service/{cluster_name}/{prefix}-*"
@@ -149,7 +150,7 @@ def _deploy_policy(
             ),
             GetPolicyDocumentStatementArgs(
                 sid="RunMigrationTask",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["ecs:RunTask"],
                 resources=[
                     f"arn:aws:ecs:{region}:{account_id}:task-definition/{prefix}-*:*"
@@ -157,7 +158,7 @@ def _deploy_policy(
             ),
             GetPolicyDocumentStatementArgs(
                 sid="DescribeTasks",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["ecs:DescribeTasks"],
                 resources=[f"arn:aws:ecs:{region}:{account_id}:task/{cluster_name}/*"],
                 conditions=[
@@ -170,7 +171,7 @@ def _deploy_policy(
             ),
             GetPolicyDocumentStatementArgs(
                 sid="PassTaskRoles",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["iam:PassRole"],
                 resources=[
                     f"arn:aws:iam::{account_id}:role/{prefix}-*-task",
@@ -186,7 +187,7 @@ def _deploy_policy(
             ),
             GetPolicyDocumentStatementArgs(
                 sid="ReadMigrationLogs",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 actions=["logs:GetLogEvents", "logs:DescribeLogStreams"],
                 resources=[
                     f"arn:aws:logs:{region}:{account_id}:log-group:/ecs/{prefix}-*:*"
@@ -245,19 +246,19 @@ def site_deploy_role(
             statements=[
                 GetPolicyDocumentStatementArgs(
                     sid="ListSiteBucket",
-                    effect="Allow",
+                    effect=PolicyStatementEffect.ALLOW,
                     actions=["s3:ListBucket"],
                     resources=[bucket_arn],
                 ),
                 GetPolicyDocumentStatementArgs(
                     sid="SyncSiteObjects",
-                    effect="Allow",
+                    effect=PolicyStatementEffect.ALLOW,
                     actions=SITE_SYNC_ACTIONS,
                     resources=[pulumi.Output.format("{0}/*", bucket_arn)],
                 ),
                 GetPolicyDocumentStatementArgs(
                     sid="InvalidateCache",
-                    effect="Allow",
+                    effect=PolicyStatementEffect.ALLOW,
                     actions=["cloudfront:CreateInvalidation"],
                     resources=[distribution_arn],
                 ),

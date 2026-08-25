@@ -4,6 +4,7 @@ from pulumi_aws.iam import (
     GetPolicyDocumentStatementArgs,
     GetPolicyDocumentStatementConditionArgs,
     GetPolicyDocumentStatementPrincipalArgs,
+    PolicyStatementEffect,
 )
 
 from network import Network
@@ -77,7 +78,7 @@ logs_policy = aws.s3.BucketPolicy(
         statements=[
             GetPolicyDocumentStatementArgs(
                 sid="AlbAccessLogWrite",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 principals=[
                     GetPolicyDocumentStatementPrincipalArgs(
                         type="Service",
@@ -93,7 +94,7 @@ logs_policy = aws.s3.BucketPolicy(
             ),
             GetPolicyDocumentStatementArgs(
                 sid="FlowLogWrite",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 principals=[
                     GetPolicyDocumentStatementPrincipalArgs(
                         type="Service",
@@ -122,7 +123,7 @@ logs_policy = aws.s3.BucketPolicy(
             ),
             GetPolicyDocumentStatementArgs(
                 sid="FlowLogAclCheck",
-                effect="Allow",
+                effect=PolicyStatementEffect.ALLOW,
                 principals=[
                     GetPolicyDocumentStatementPrincipalArgs(
                         type="Service",

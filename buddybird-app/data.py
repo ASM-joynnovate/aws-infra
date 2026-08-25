@@ -4,6 +4,7 @@ from pulumi_aws.iam import (
     GetPolicyDocumentStatementArgs,
     GetPolicyDocumentStatementConditionArgs,
     GetPolicyDocumentStatementPrincipalArgs,
+    PolicyStatementEffect,
 )
 
 NAME_PREFIX = "jn-buddybird-v1"
@@ -109,7 +110,7 @@ def data_bucket(
             statements=[
                 GetPolicyDocumentStatementArgs(
                     sid="DenyInsecureTransport",
-                    effect="Deny",
+                    effect=PolicyStatementEffect.DENY,
                     principals=[
                         GetPolicyDocumentStatementPrincipalArgs(
                             type="*",

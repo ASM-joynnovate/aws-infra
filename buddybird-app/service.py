@@ -24,7 +24,7 @@ def _assume_role_policy() -> str:
     return aws.iam.get_policy_document(
         statements=[
             aws.iam.GetPolicyDocumentStatementArgs(
-                effect="Allow",
+                effect=aws.iam.PolicyStatementEffect.ALLOW,
                 actions=["sts:AssumeRole"],
                 principals=[
                     aws.iam.GetPolicyDocumentStatementPrincipalArgs(
@@ -74,7 +74,7 @@ def _roles(
         policy=aws.iam.get_policy_document_output(
             statements=[
                 aws.iam.GetPolicyDocumentStatementArgs(
-                    effect="Allow",
+                    effect=aws.iam.PolicyStatementEffect.ALLOW,
                     actions=["secretsmanager:GetSecretValue"],
                     resources=secret_arns,
                 )
@@ -94,12 +94,12 @@ def _roles(
         policy=aws.iam.get_policy_document_output(
             statements=[
                 aws.iam.GetPolicyDocumentStatementArgs(
-                    effect="Allow",
+                    effect=aws.iam.PolicyStatementEffect.ALLOW,
                     actions=S3_OBJECT_ACTIONS,
                     resources=[pulumi.Output.format("{0}/*", bucket.arn)],
                 ),
                 aws.iam.GetPolicyDocumentStatementArgs(
-                    effect="Allow",
+                    effect=aws.iam.PolicyStatementEffect.ALLOW,
                     actions=["s3:ListBucket"],
                     resources=[bucket.arn],
                 ),

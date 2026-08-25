@@ -103,7 +103,15 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
             GetPolicyDocumentStatementArgs(
                 sid="ManageServiceRoles",
                 effect="Allow",
-                actions=ROLE_WRITE_ACTIONS + POLICY_WRITE_ACTIONS + ["iam:PassRole"],
+                actions=ROLE_WRITE_ACTIONS
+                + POLICY_WRITE_ACTIONS
+                + [
+                    "iam:PassRole",
+                    "iam:GetRole",
+                    "iam:GetRolePolicy",
+                    "iam:ListAttachedRolePolicies",
+                    "iam:ListRolePolicies",
+                ],
                 resources=["*"],
             ),
             GetPolicyDocumentStatementArgs(

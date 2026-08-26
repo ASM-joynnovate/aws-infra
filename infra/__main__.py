@@ -9,6 +9,7 @@ from pulumi_aws.iam import (
 
 from network import Network
 from serving import Serving
+from ssm import bastion
 
 NAME_PREFIX = "jn"
 BUDDYBIRD_ROOT_DOMAIN = "buddybird.xyz"
@@ -168,6 +169,12 @@ serving = Serving(
     log_bucket_policy=logs_policy,
 )
 
+ssm_instance = bastion(
+    NAME_PREFIX,
+    subnet=network.public_subnets[0],
+    security_group=network.ssm_security_group,
+)
+
 aws.budgets.Budget(
     "monthly",
     name=f"{NAME_PREFIX}-monthly",
@@ -193,6 +200,7 @@ pulumi.export("private_subnet_ids", [subnet.id for subnet in network.private_sub
 pulumi.export("task_security_group_id", network.task_security_group.id)
 pulumi.export("db_security_group_id", network.db_security_group.id)
 pulumi.export("cache_security_group_id", network.cache_security_group.id)
+pulumi.export("ssm_instance_id", ssm_instance.id)
 pulumi.export("cluster_arn", serving.cluster.arn)
 pulumi.export("alb_dns_name", serving.alb.dns_name)
 pulumi.export("https_listener_arn", serving.https_listener.arn)

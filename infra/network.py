@@ -93,6 +93,7 @@ class Network(pulumi.ComponentResource):
                 "task_security_group": self.task_security_group,
                 "db_security_group": self.db_security_group,
                 "cache_security_group": self.cache_security_group,
+                "ssm_security_group": self.ssm_security_group,
             }
         )
 
@@ -198,11 +199,32 @@ class Network(pulumi.ComponentResource):
                 opts=child,
             )
 
+        self.ssm_security_group = aws.ec2.SecurityGroup(
+            "ssm",
+            name=f"{name}-ssm",
+            description="SSM bastion",
+            vpc_id=self.vpc.id,
+            tags={"Name": f"{name}-ssm"},
+            opts=child,
+        )
+
+        aws.vpc.SecurityGroupIngressRule(
+            "db-from-ssm",
+            security_group_id=self.db_security_group.id,
+            ip_protocol=aws.ec2.ProtocolType.TCP,
+            from_port=DB_PORT,
+            to_port=DB_PORT,
+            referenced_security_group_id=self.ssm_security_group.id,
+            description=f"From SSM bastion on {DB_PORT}",
+            opts=child,
+        )
+
         groups = [
             ("alb", self.alb_security_group),
             ("task", self.task_security_group),
             ("db", self.db_security_group),
             ("cache", self.cache_security_group),
+            ("ssm", self.ssm_security_group),
         ]
         for rule_name, security_group in groups:
             aws.vpc.SecurityGroupEgressRule(

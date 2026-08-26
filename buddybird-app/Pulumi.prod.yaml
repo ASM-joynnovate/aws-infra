@@ -16,3 +16,5 @@ config:
     secure: v1:hzTOfeXrzF2fDqQj:U+eFlhZ8I//oquDyCG6KKv9YnxF3nWreGjG1n+6OuN2vZeaEdgz+1+8sxxf1RBLknPTYeEUCkj19zo9v3M5bnpQmZMCI
   buddybird-app:backofficePassword:
     secure: v1:29d0cdcOqvN4DS2w:/ARXp+E8kGSKcDZmEqQFM6/4pUYhAbRmoN28SGFPrQ==
+  buddybird-app:readonlyDbPassword:
+    secure: v1:WVn+xDi0fXhVQZVQ:neMvedfcJaOrSIgKQxMqTHmjKNJlG6NlNSPywdGAQw==

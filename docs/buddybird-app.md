@@ -1,43 +1,42 @@
 # buddybird-app
 
-buddybird 전용 인프라의 구성과 배포 절차를 다룬다.
+buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
+
+| 항목 | 값 |
+|---|---|
+| StackReference | `organization/joynnovate-infra/prod` |
 
 ## 파일 구성
 
-| 파일 | 리소스 |
-| --- | --- |
-| `__main__.py` | - 데이터 버킷<br>- 환경별 구성<br>- DNS 레코드<br>- 출력값 |
-| `deploy.py` | - Elastic Container Registry(ECR) 저장소<br>- 배포 역할<br>- RDS 비밀번호 rotation 재배포 Lambda |
-| `data.py` | - Relational Database Service(RDS) 서브넷 그룹<br>- RDS 인스턴스<br>- 앱 시크릿 |
-| `service.py` | - 로그 그룹<br>- Identity and Access Management(IAM) 역할<br>- task definition<br>- 타깃 그룹<br>- 리스너 규칙<br>- Elastic Container Service(ECS) 서비스 |
-| `edge.py` | - 랜딩 페이지 버킷<br>- CloudFront<br>- Origin Access Control(OAC)<br>- rewrite 함수 |
-
-`organization/joynnovate-infra/prod`의 출력값을 StackReference로 참조한다.
+| 파일 | 역할 |
+|---|---|
+| `__main__.py` | 데이터 버킷, 환경별 구성, DNS 레코드, 출력값 |
+| `deploy.py` | ECR 저장소, 배포 역할, rotation 재배포 Lambda |
+| `data.py` | RDS 서브넷 그룹, RDS 인스턴스, 앱 시크릿, DB readonly 시크릿 |
+| `service.py` | 로그 그룹, IAM 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스 |
+| `edge.py` | 랜딩 페이지 버킷, CloudFront, OAC, rewrite 함수 |
 
 ## 환경
 
-`prod` 스택 하나에서 환경 생성 함수를 환경마다 호출한다.
-
 | 환경 | api 호스트명 | backoffice frontend 호스트명 |
-| --- | --- | --- |
+|---|---|---|
 | prod | `buddybird.xyz` | `backoffice.buddybird.xyz` |
 | dev | `dev.buddybird.xyz` | `dev-backoffice.buddybird.xyz` |
 
 ## 이름 규칙
 
-계정이나 리전에서 유일해야 하는 리소스에 환경 접미사를 추가한다.
-
 ### 환경별 이름
 
-| 리소스 | 이름 패턴 |
-| --- | --- |
-| api: RDS, ECS 서비스, 타깃 그룹, task definition family, 앱 시크릿 | `jn-buddybird-api-<env>` |
+| 리소스 | 패턴 |
+|---|---|
+| api: RDS, ECS 서비스, 타깃 그룹, task definition, 앱 시크릿 | `jn-buddybird-api-<env>` |
+| api: DB readonly 시크릿 | `jn-buddybird-api-<env>-readonly` |
 | api: task role | `jn-buddybird-api-<env>-task` |
 | api: execution role | `jn-buddybird-api-<env>-exec` |
 | api: 로그 그룹 | `/ecs/jn-buddybird-api-<env>` |
-| api: rotation 재배포 Lambda, 역할, EventBridge 규칙 | `jn-buddybird-api-<env>-rotation` |
+| api: rotation Lambda, 역할, EventBridge 규칙 | `jn-buddybird-api-<env>-rotation` |
 | 데이터 버킷 | `jn-buddybird-v1-data-<env>-<계정>-<리전>` |
-| backoffice frontend: ECS 서비스, task definition family | `jn-buddybird-backoffice-frontend-<env>` |
+| backoffice frontend: ECS 서비스, task definition | `jn-buddybird-backoffice-frontend-<env>` |
 | backoffice frontend: 타깃 그룹 | `jn-buddybird-bo-fe-<env>` |
 | backoffice frontend: execution role | `jn-buddybird-backoffice-frontend-<env>-exec` |
 | backoffice frontend: 로그 그룹 | `/ecs/jn-buddybird-backoffice-frontend-<env>` |
@@ -45,7 +44,7 @@ buddybird 전용 인프라의 구성과 배포 절차를 다룬다.
 ### 공통 이름
 
 | 리소스 | 이름 |
-| --- | --- |
+|---|---|
 | api ECR 저장소 | `jn-buddybird-api` |
 | api 배포 역할 | `jn-buddybird-api-deploy` |
 | backoffice frontend ECR 저장소 | `jn-buddybird-backoffice-frontend` |
@@ -58,104 +57,107 @@ buddybird 전용 인프라의 구성과 배포 절차를 다룬다.
 ### ECR 저장소
 
 | 항목 | 값 |
-| --- | --- |
+|---|---|
 | 이름 | `jn-buddybird-api` |
 | 태그 변경 | IMMUTABLE |
 | 스캔 | 푸시 시 |
-| 태그 없는 이미지 | 7일 후 자동 삭제 |
+| 태그 없는 이미지 | 7일 후 삭제 |
 | 보관 | 최근 20개 |
 
 ### 배포 역할
 
-GitHub Actions OpenID Connect(OIDC)용으로 정의한 역할이다.
-
 #### 신뢰 정책
 
 - 이름: `jn-buddybird-api-deploy`
-- `buddybird-api` 레포, `ref:refs/heads/main`
-- `buddybird-api` 레포, `ref:refs/heads/dev`
-- `buddybird-api` 레포, `environment:prod`
+- `buddybird-api` 레포지토리
+  - `ref:refs/heads/main`
+  - `ref:refs/heads/dev`
+  - `environment:prod`
 
 #### 권한
 
 | 대상 | 액션 |
-| --- | --- |
-| `*` | - `ecr:GetAuthorizationToken`<br>- `ecs:RegisterTaskDefinition`<br>- `ecs:DescribeTaskDefinition` |
-| ECR 저장소 | - 레이어 업로드<br>- `ecr:PutImage`<br>- `ecr:DescribeImages` |
-| ECS 서비스 `jn-buddybird-api-*` | - `ecs:UpdateService`<br>- `ecs:DescribeServices` |
+|---|---|
+| `*` | `ecr:GetAuthorizationToken`, `ecs:RegisterTaskDefinition`, `ecs:DescribeTaskDefinition` |
+| ECR 저장소 | 레이어 업로드, `ecr:PutImage`, `ecr:DescribeImages` |
+| ECS 서비스 `jn-buddybird-api-*` | `ecs:UpdateService`, `ecs:DescribeServices` |
 | task definition `jn-buddybird-api-*` | `ecs:RunTask` |
-| task | `ecs:DescribeTasks` (클러스터 Amazon Resource Name(ARN) 조건) |
+| task | `ecs:DescribeTasks` (클러스터 ARN 조건) |
 | `*-task`, `*-exec` 역할 | `iam:PassRole` (`ecs-tasks.amazonaws.com` 한정) |
-| 로그 그룹 `/ecs/jn-buddybird-api-*` | - `logs:GetLogEvents`<br>- `logs:DescribeLogStreams` |
+| 로그 그룹 `/ecs/jn-buddybird-api-*` | `logs:GetLogEvents`, `logs:DescribeLogStreams` |
 
 ### RDS
 
-| 항목 | 값 |
-| --- | --- |
-| 엔진 | PostgreSQL 17 |
-| 인스턴스 | db.t4g.micro |
-| 스토리지 | gp3 20GB, 암호화 |
-| 백업 보존 | 7일 |
-| 비밀번호 | `manage_master_user_password` |
-| 서브넷 | private, 서브넷 그룹 환경 공유 |
+| 항목           | 값 |
+|----------------|---|
+| engine         | PostgreSQL 17 |
+| instance       | db.t4g.micro |
+| storage        | gp3 20GB, 암호화 |
+| 백업 보존      | 7일 |
+| password       | `manage_master_user_password` |
+| subnet         | private, 서브넷 그룹 환경 공유 |
+| prod 삭제 보호 | `protect=True`, `deletion_protection` |
 
 ### 비밀번호 rotation 재배포
 
-RDS 관리 시크릿의 `AWSCURRENT` 라벨이 이동하면 api 서비스를 force new deployment로 갱신한다.
-
-| 리소스 | 값 |
-| --- | --- |
-| EventBridge 규칙 | `Secret Label Updated`, `labelUpdated: AWSCURRENT`, `resources`에 RDS 관리 시크릿 ARN |
+| 항목 | 값 |
+|---|---|
+| 트리거 | RDS 관리 시크릿의 `AWSCURRENT` 라벨 이동 |
+| EventBridge 규칙 | `Secret Label Updated`, `labelUpdated: AWSCURRENT` |
 | Lambda | Python 3.14, `ecs:UpdateService` 호출 |
-| Lambda 역할 권한 | 해당 환경 ECS 서비스에 `ecs:UpdateService`, `AWSLambdaBasicExecutionRole` |
+| 결과 | api 서비스 force new deployment |
 
 ### 앱 시크릿
 
-토큰 서명키와 backoffice 비밀번호를 JSON 하나로 저장한다.
-
 | JSON 키 | 용도 |
-| --- | --- |
+|---|---|
 | `access_token_key` | 액세스 토큰 서명 |
 | `refresh_token_key` | 리프레시 토큰 서명 |
 | `backoffice_password` | backoffice 로그인 |
 
+### DB readonly 시크릿
+
+| 항목 | 값 |
+|---|---|
+| 이름 | `jn-buddybird-api-<env>-readonly` |
+| 형식 | `{"password": "..."}` |
+| 용도 | readonly PostgreSQL 사용자 비밀번호 |
+
 ### 데이터 버킷
 
-환경별 오디오 파일을 저장한다.
+| 항목 | 값 |
+|---|---|
+| 암호화 | SSE-S3 |
+| public access | 차단 |
+| 버킷 정책 | TLS 필수 |
+| 버저닝 | 활성화 |
+| 이전 버전 | 30일 후 삭제 |
+| 미완료 멀티파트 업로드 | 7일 후 삭제 |
 
 #### CORS
 
 | 환경 | 허용 출처 |
-| --- | --- |
-| dev | - `https://dev.buddybird.xyz`<br>- `https://dev-backoffice.buddybird.xyz` |
-| prod | - `https://buddybird.xyz`<br>- `https://backoffice.buddybird.xyz` |
+|---|---|
+| dev | `https://dev.buddybird.xyz`, `https://dev-backoffice.buddybird.xyz` |
+| prod | `https://buddybird.xyz`, `https://backoffice.buddybird.xyz` |
 | local | `http://localhost:3000` |
-
-#### 버킷 설정
-
-| 항목 | 값 |
-| --- | --- |
-| 암호화 | SSE-S3 |
-| public access | 차단 |
-| 버킷 정책 | TLS 전용 |
-| multipart 업로드 | 미완료 시 7일 후 삭제 |
 
 ### ECS 서비스
 
 | 항목 | 값 |
-| --- | --- |
+|---|---|
 | 아키텍처 | ARM64 Fargate |
 | cpu | 256 |
 | memory | 512 |
 | 포트 | 8000 |
 | 헬스체크 | `/api/healthz` |
 | 서브넷 | public, `assign_public_ip` |
-| circuit breaker | 활성, 실패 시 자동 롤백 |
+| circuit breaker | 활성화, 실패 시 자동 롤백 |
 
 ### 환경 변수
 
 | 변수 | 값 |
-| --- | --- |
+|---|---|
 | `BUDDYBIRD_ENV` | `dev` 또는 `prod` |
 | `DB_HOST` | RDS 주소 |
 | `DB_NAME` | `buddybird` |
@@ -169,10 +171,8 @@ RDS 관리 시크릿의 `AWSCURRENT` 라벨이 이동하면 api 서비스를 for
 
 ### 시크릿
 
-Secrets Manager JSON 키 선택자로 주입한다.
-
 | 변수 | `valueFrom` |
-| --- | --- |
+|---|---|
 | `DB_PASSWORD` | `<RDS 관리 시크릿 ARN>:password::` |
 | `AUTH_ACCESS_TOKEN_SECRET_KEY` | `<앱 시크릿 ARN>:access_token_key::` |
 | `AUTH_REFRESH_TOKEN_SECRET_KEY` | `<앱 시크릿 ARN>:refresh_token_key::` |
@@ -183,39 +183,33 @@ Secrets Manager JSON 키 선택자로 주입한다.
 ### ECR 저장소
 
 | 항목 | 값 |
-| --- | --- |
+|---|---|
 | 이름 | `jn-buddybird-backoffice-frontend` |
-| 구성 | api ECR 저장소와 동일 |
-| 태그 없는 이미지 | 7일 후 자동 삭제 |
+| 태그 없는 이미지 | 7일 후 삭제 |
 | 보관 | 최근 20개 |
-| 환경 구분 | 이미지 태그에 `{version}-dev`(dev), `{version}`(prod) 접미사 |
 
 ### 배포 역할
-
-GitHub Actions OIDC용으로 정의한 역할이다.
 
 #### 신뢰 정책
 
 - 이름: `jn-buddybird-backoffice-frontend-deploy`
-- `buddybird-backoffice-frontend` 레포, `ref:refs/heads/main`
-- `buddybird-backoffice-frontend` 레포, `ref:refs/heads/dev`
+- `buddybird-backoffice-frontend` 레포지토리
+  - `ref:refs/heads/main`
+  - `ref:refs/heads/dev`
 
 #### 권한
 
 | 대상 | 액션 |
-| --- | --- |
-| `*` | - `ecr:GetAuthorizationToken`<br>- `ecs:RegisterTaskDefinition`<br>- `ecs:DescribeTaskDefinition` |
-| ECR 저장소 | - 레이어 업로드<br>- `ecr:PutImage`<br>- `ecr:DescribeImages` |
-| ECS 서비스 `jn-buddybird-backoffice-frontend-*` | - `ecs:UpdateService`<br>- `ecs:DescribeServices` |
+|---|---|
+| `*` | `ecr:GetAuthorizationToken`, `ecs:RegisterTaskDefinition`, `ecs:DescribeTaskDefinition` |
+| ECR 저장소 | 레이어 업로드, `ecr:PutImage`, `ecr:DescribeImages` |
+| ECS 서비스 `jn-buddybird-backoffice-frontend-*` | `ecs:UpdateService`, `ecs:DescribeServices` |
 | `*-exec` 역할 | `iam:PassRole` (`ecs-tasks.amazonaws.com` 한정) |
 
 ### ECS 서비스
 
-api와 사양이 같다.
-task role, 환경 변수, 시크릿은 없고 포트 3000을 사용한다.
-
 | 항목 | 값 |
-| --- | --- |
+|---|---|
 | 아키텍처 | ARM64 Fargate |
 | cpu | 256 |
 | memory | 512 |
@@ -223,29 +217,34 @@ task role, 환경 변수, 시크릿은 없고 포트 3000을 사용한다.
 | 헬스체크 | `/api/healthz` |
 | 타깃 그룹 이름 | `jn-buddybird-bo-fe-<env>` |
 | 역할 | execution role만 사용 |
-| circuit breaker | 활성, 실패 시 자동 롤백 |
+| circuit breaker | 활성화, 실패 시 자동 롤백 |
+| task role | X |
+| 환경 변수 | X |
+| 시크릿 | X |
 
 ## 랜딩 페이지
 
-### 랜딩 페이지 버킷
+### 버킷
 
 | 항목 | 값 |
-| --- | --- |
+|---|---|
 | 암호화 | SSE-S3 |
 | public access | 차단 |
 | 읽기 허용 | CloudFront만 `s3:GetObject` |
-| 버킷 정책 | TLS 전용 |
+| 버킷 정책 | TLS 필수 |
 
 ### CloudFront
 
 | behavior | 오리진 | 캐시 정책 |
-| --- | --- | --- |
+|---|---|---|
 | 기본 | S3 | `Managed-CachingOptimized` |
-| `/api/*` | Application Load Balancer(ALB) | - `Managed-CachingDisabled`<br>- `Managed-AllViewer` |
+| `/api/*` | ALB | `Managed-CachingDisabled`, `Managed-AllViewer` |
 
-- 별칭: `buddybird.xyz`, `www.buddybird.xyz`
-- OAC로 S3 접근
-- 403 응답을 `/index.html`로 전환, 404 상태 코드 반환
+| 항목 | 값 |
+|---|---|
+| 별칭 | `buddybird.xyz`, `www.buddybird.xyz` |
+| S3 접근 | OAC |
+| 403 응답 | `/index.html`로 전환, 404 상태 코드 반환 |
 
 #### rewrite 함수
 
@@ -254,25 +253,24 @@ task role, 환경 변수, 시크릿은 없고 포트 3000을 사용한다.
 
 ### 배포 역할
 
-GitHub Actions OIDC용으로 정의한 역할이다.
-
 #### 신뢰 정책
 
 - 이름: `jn-buddybird-site-deploy`
-- `buddybird-landing` 레포, `ref:refs/heads/main`
+- `buddybird-landing` 레포지토리
+  - `ref:refs/heads/main`
 
 #### 권한
 
 | 대상 | 액션 |
-| --- | --- |
+|---|---|
 | 랜딩 페이지 버킷 | `s3:ListBucket` |
-| 랜딩 페이지 버킷 객체 | - `s3:PutObject`<br>- `s3:DeleteObject`<br>- `s3:GetObject` |
+| 랜딩 페이지 버킷 객체 | `s3:PutObject`, `s3:DeleteObject`, `s3:GetObject` |
 | CloudFront 배포 | `cloudfront:CreateInvalidation` |
 
 ## 리스너 규칙 우선순위
 
 | 우선순위 | 호스트명 | 경로 |
-| --- | --- | --- |
+|---|---|---|
 | 10 | `buddybird.xyz` | `/api/*` |
 | 20 | `dev.buddybird.xyz` | `/api/*` |
 | 30 | `backoffice.buddybird.xyz` | 전체 |
@@ -280,27 +278,25 @@ GitHub Actions OIDC용으로 정의한 역할이다.
 
 ## DNS
 
-Cloudflare CNAME 레코드, TTL 300초, proxied 비활성이다.
-
-| 호스트명 | 대상 |
-| --- | --- |
-| `buddybird.xyz` | CloudFront |
-| `www.buddybird.xyz` | CloudFront |
-| `dev.buddybird.xyz` | ALB |
-| `backoffice.buddybird.xyz` | ALB |
-| `dev-backoffice.buddybird.xyz` | ALB |
-
-## 삭제 보호
-
-prod RDS에 `protect=True`와 `deletion_protection`을 적용한다.
+| 호스트명 | 대상 | TTL | proxied |
+|---|---|---|---|
+| `buddybird.xyz` | CloudFront | 300초 | 비활성 |
+| `www.buddybird.xyz` | CloudFront | 300초 | 비활성 |
+| `dev.buddybird.xyz` | ALB | 300초 | 비활성 |
+| `backoffice.buddybird.xyz` | ALB | 300초 | 비활성 |
+| `dev-backoffice.buddybird.xyz` | ALB | 300초 | 비활성 |
 
 ## 배포
 
 ### 분담
 
-api는 `buddybird-api` 레포의 GitHub Actions가 배포한다.
-backoffice frontend는 `buddybird-backoffice-frontend` 레포의 GitHub Actions가 배포한다.
-이 스택에서 컨테이너 정의를 변경한 경우 `pulumi up` 후 서비스를 수동으로 갱신한다.
+| 서비스 | 배포 레포 |
+|---|---|
+| api | `buddybird-api` GitHub Actions |
+| backoffice frontend | `buddybird-backoffice-frontend` GitHub Actions |
+| 랜딩 페이지 | `buddybird-landing` GitHub Actions |
+
+이 스택에서 컨테이너 정의를 변경한 경우 `pulumi up` 후 서비스를 수동으로 갱신합니다.
 
 ```bash
 aws ecs update-service --cluster jn-cluster --service <서비스> \
@@ -310,34 +306,40 @@ aws ecs update-service --cluster jn-cluster --service <서비스> \
 ### api 배포
 
 | 브랜치 | 동작 |
-| --- | --- |
-| `dev` | - `pyproject.toml` 버전 태그가 ECR에 없어야 진행<br>- 이미지 빌드와 ECR 푸시<br>- 마이그레이션 task 실행<br>- dev 서비스 갱신 |
-| `main` | - 같은 버전 태그가 ECR에 있어야 진행<br>- 마이그레이션 task 실행<br>- prod 서비스 갱신 |
+|---|---|
+| `dev` | 이미지 빌드와 ECR 푸시 → 마이그레이션 task 실행 → dev 서비스 갱신 |
+| `main` | 마이그레이션 task 실행 → prod 서비스 갱신 |
 
 ### backoffice frontend 배포
 
-`buddybird-backoffice-frontend` 레포의 GitHub Actions가 배포한다.
-빌드할 때 환경별 `NEXT_PUBLIC_API_URL`을 Docker 빌드 인자로 전달한다.
-
 | 트리거 | 동작 |
-| --- | --- |
-| release-please 릴리즈 PR 머지 (dev) | - `{version}-dev` 태그가 ECR에 없어야 진행<br>- 이미지 빌드와 ECR 푸시<br>- dev 서비스 갱신 |
-| push to main | - `{version}-dev` 태그가 ECR에 있어야 진행<br>- `{version}` 태그가 ECR에 없으면 이미지 빌드와 푸시, 있으면 기존 이미지 사용<br>- prod 서비스 갱신 |
-
-### 랜딩 페이지 배포
-
-1. 랜딩 페이지 버킷에 `aws s3 sync`
-2. CloudFront invalidation
+|---|---|
+| release-please 릴리즈 PR 머지(dev) | 이미지 빌드와 ECR 푸시 → dev 서비스 갱신 |
+| push to main | prod 서비스 갱신 |
 
 ### 수동 단계
 
-첫 적용 전에 스택 secret을 저장한다.
+첫 적용 전에 스택 secret을 저장합니다.
 
 ```bash
 pulumi config set --secret cloudflare:apiToken <토큰>
 pulumi config set --secret authAccessTokenKey "$(openssl rand -base64 32)"
 pulumi config set --secret authRefreshTokenKey "$(openssl rand -base64 32)"
 pulumi config set --secret backofficePassword <비밀번호>
+pulumi config set --secret readonlyDbPassword <비밀번호>
+```
+
+### readonly DB 사용자 생성
+
+최초 1회 SSM port forwarding으로 master 사용자에 접속해 dev, prod 각각 실행합니다.
+접속 방법은 `ssm-db-access.md`를 참고합니다.
+
+```sql
+CREATE USER readonly WITH PASSWORD '<readonlyDbPassword에 설정한 비밀번호>';
+GRANT CONNECT ON DATABASE buddybird TO readonly;
+GRANT USAGE ON SCHEMA public TO readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly;
 ```
 
 ### 최초 구축 순서

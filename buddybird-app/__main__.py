@@ -10,6 +10,7 @@ from data import (
     app_secret,
     data_bucket,
     database,
+    db_readonly_secret,
     db_subnet_group,
 )
 from deploy import (
@@ -94,6 +95,12 @@ for env, api_settings in API_ENVIRONMENTS.items():
         access_token_key=config.require_secret("authAccessTokenKey"),
         refresh_token_key=config.require_secret("authRefreshTokenKey"),
         backoffice_password=config.require_secret("backofficePassword"),
+    )
+
+    db_readonly_secret(
+        env,
+        name=f"{name}-readonly",
+        password=config.require_secret("readonlyDbPassword"),
     )
 
     backoffice_frontend_settings = BACKOFFICE_FRONTEND_ENVIRONMENTS[env]

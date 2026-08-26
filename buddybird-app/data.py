@@ -187,6 +187,28 @@ def database(
     )
 
 
+def db_readonly_secret(
+    env: str,
+    *,
+    name: str,
+    password: pulumi.Input[str],
+) -> aws.secretsmanager.Secret:
+    secret = aws.secretsmanager.Secret(
+        f"db-readonly-{env}",
+        name=name,
+        description=f"buddybird-api {env} read-only database user",
+        recovery_window_in_days=0,
+    )
+
+    aws.secretsmanager.SecretVersion(
+        f"db-readonly-{env}",
+        secret_id=secret.id,
+        secret_string=pulumi.Output.json_dumps({"password": password}),
+    )
+
+    return secret
+
+
 def app_secret(
     env: str,
     *,

@@ -10,7 +10,7 @@ buddybird 전용 인프라의 구성과 배포 절차를 다룬다.
 | `deploy.py` | - Elastic Container Registry(ECR) 저장소<br>- 배포 역할<br>- RDS 비밀번호 rotation 재배포 Lambda |
 | `data.py` | - Relational Database Service(RDS) 서브넷 그룹<br>- RDS 인스턴스<br>- 앱 시크릿 |
 | `service.py` | - 로그 그룹<br>- Identity and Access Management(IAM) 역할<br>- task definition<br>- 타깃 그룹<br>- 리스너 규칙<br>- Elastic Container Service(ECS) 서비스 |
-| `edge.py` | - 사이트 버킷<br>- CloudFront<br>- Origin Access Control(OAC)<br>- rewrite 함수 |
+| `edge.py` | - 랜딩 페이지 버킷<br>- CloudFront<br>- Origin Access Control(OAC)<br>- rewrite 함수 |
 
 `organization/joynnovate-infra/prod`의 출력값을 StackReference로 참조한다.
 
@@ -49,8 +49,9 @@ buddybird 전용 인프라의 구성과 배포 절차를 다룬다.
 | api ECR 저장소 | `jn-buddybird-api` |
 | api 배포 역할 | `jn-buddybird-api-deploy` |
 | backoffice frontend ECR 저장소 | `jn-buddybird-backoffice-frontend` |
-| 사이트 버킷 | `jn-buddybird-site-<계정>-<리전>` |
-| 사이트 배포 역할 | `jn-buddybird-site-deploy` |
+| backoffice frontend 배포 역할 | `jn-buddybird-backoffice-frontend-deploy` |
+| 랜딩 페이지 버킷 | `jn-buddybird-site-<계정>-<리전>` |
+| 랜딩 페이지 배포 역할 | `jn-buddybird-site-deploy` |
 
 ## api
 
@@ -187,7 +188,26 @@ Secrets Manager JSON 키 선택자로 주입한다.
 | 구성 | api ECR 저장소와 동일 |
 | 태그 없는 이미지 | 7일 후 자동 삭제 |
 | 보관 | 최근 20개 |
-| 환경 구분 | 이미지 태그에 `dev-`, `prod-` 접두사 |
+| 환경 구분 | 이미지 태그에 `{version}-dev`(dev), `{version}`(prod) 접미사 |
+
+### 배포 역할
+
+GitHub Actions OIDC용으로 정의한 역할이다.
+
+#### 신뢰 정책
+
+- 이름: `jn-buddybird-backoffice-frontend-deploy`
+- `buddybird-backoffice-frontend` 레포, `ref:refs/heads/main`
+- `buddybird-backoffice-frontend` 레포, `ref:refs/heads/dev`
+
+#### 권한
+
+| 대상 | 액션 |
+| --- | --- |
+| `*` | - `ecr:GetAuthorizationToken`<br>- `ecs:RegisterTaskDefinition`<br>- `ecs:DescribeTaskDefinition` |
+| ECR 저장소 | - 레이어 업로드<br>- `ecr:PutImage`<br>- `ecr:DescribeImages` |
+| ECS 서비스 `jn-buddybird-backoffice-frontend-*` | - `ecs:UpdateService`<br>- `ecs:DescribeServices` |
+| `*-exec` 역할 | `iam:PassRole` (`ecs-tasks.amazonaws.com` 한정) |
 
 ### ECS 서비스
 
@@ -205,9 +225,9 @@ task role, 환경 변수, 시크릿은 없고 포트 3000을 사용한다.
 | 역할 | execution role만 사용 |
 | circuit breaker | 활성, 실패 시 자동 롤백 |
 
-## 랜딩 사이트
+## 랜딩 페이지
 
-### 사이트 버킷
+### 랜딩 페이지 버킷
 
 | 항목 | 값 |
 | --- | --- |
@@ -245,8 +265,8 @@ GitHub Actions OIDC용으로 정의한 역할이다.
 
 | 대상 | 액션 |
 | --- | --- |
-| 사이트 버킷 | `s3:ListBucket` |
-| 사이트 버킷 객체 | - `s3:PutObject`<br>- `s3:DeleteObject`<br>- `s3:GetObject` |
+| 랜딩 페이지 버킷 | `s3:ListBucket` |
+| 랜딩 페이지 버킷 객체 | - `s3:PutObject`<br>- `s3:DeleteObject`<br>- `s3:GetObject` |
 | CloudFront 배포 | `cloudfront:CreateInvalidation` |
 
 ## 리스너 규칙 우선순위
@@ -279,7 +299,7 @@ prod RDS에 `protect=True`와 `deletion_protection`을 적용한다.
 ### 분담
 
 api는 `buddybird-api` 레포의 GitHub Actions가 배포한다.
-backoffice frontend는 사람이 로컬에서 빌드하고 배포한다.
+backoffice frontend는 `buddybird-backoffice-frontend` 레포의 GitHub Actions가 배포한다.
 이 스택에서 컨테이너 정의를 변경한 경우 `pulumi up` 후 서비스를 수동으로 갱신한다.
 
 ```bash
@@ -296,15 +316,17 @@ aws ecs update-service --cluster jn-cluster --service <서비스> \
 
 ### backoffice frontend 배포
 
-1. ECR에 이미지 푸시
-2. 실행 중인 리비전의 task definition을 복제해 새 이미지 태그로 등록
-3. 서비스 갱신
+`buddybird-backoffice-frontend` 레포의 GitHub Actions가 배포한다.
+빌드할 때 환경별 `NEXT_PUBLIC_API_URL`을 Docker 빌드 인자로 전달한다.
 
-빌드할 때 환경별 `NEXT_PUBLIC_API_URL`을 빌드 인자로 전달한다.
+| 트리거 | 동작 |
+| --- | --- |
+| release-please 릴리즈 PR 머지 (dev) | - `{version}-dev` 태그가 ECR에 없어야 진행<br>- 이미지 빌드와 ECR 푸시<br>- dev 서비스 갱신 |
+| push to main | - `{version}-dev` 태그가 ECR에 있어야 진행<br>- `{version}` 태그가 ECR에 없으면 이미지 빌드와 푸시, 있으면 기존 이미지 사용<br>- prod 서비스 갱신 |
 
-### 랜딩 사이트 배포
+### 랜딩 페이지 배포
 
-1. 사이트 버킷에 `aws s3 sync`
+1. 랜딩 페이지 버킷에 `aws s3 sync`
 2. CloudFront invalidation
 
 ### 수동 단계

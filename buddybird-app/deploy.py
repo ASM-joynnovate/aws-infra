@@ -12,17 +12,25 @@ from pulumi_aws.iam import (
 OIDC_HOST = "token.actions.githubusercontent.com"
 OIDC_AUDIENCE = "sts.amazonaws.com"
 
-SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-api@1262535317"
-DEPLOY_SUBS = [
-    f"{SUB_PREFIX}:ref:refs/heads/main",
-    f"{SUB_PREFIX}:ref:refs/heads/dev",
-    f"{SUB_PREFIX}:environment:prod",
+API_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-api@1262535317"
+API_DEPLOY_SUBS = [
+    f"{API_SUB_PREFIX}:ref:refs/heads/main",
+    f"{API_SUB_PREFIX}:ref:refs/heads/dev",
+    f"{API_SUB_PREFIX}:environment:prod",
 ]
 
-SITE_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-landing@1275213976"
-SITE_DEPLOY_SUBS = [f"{SITE_SUB_PREFIX}:ref:refs/heads/main"]
+LANDING_FE_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-landing@1275213976"
+LANDING_FE_DEPLOY_SUBS = [f"{LANDING_FE_SUB_PREFIX}:ref:refs/heads/main"]
 
-SITE_SYNC_ACTIONS = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
+BO_FE_SUB_PREFIX = (
+    "repo:ASM-joynnovate@279207361/buddybird-backoffice-frontend@1342074306"
+)
+BO_FE_DEPLOY_SUBS = [
+    f"{BO_FE_SUB_PREFIX}:ref:refs/heads/main",
+    f"{BO_FE_SUB_PREFIX}:ref:refs/heads/dev",
+]
+
+LANDING_FE_SYNC_ACTIONS = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
 
 ECR_PUSH_ACTIONS = [
     "ecr:BatchCheckLayerAvailability",
@@ -131,7 +139,7 @@ def _trust_policy(account_id: str, subs: list[str]) -> pulumi.Output[str]:
     ).json
 
 
-def _deploy_policy(
+def _api_deploy_policy(
     account_id: str,
     region: str,
     repository_arn: pulumi.Input[str],
@@ -216,7 +224,7 @@ def _deploy_policy(
     ).json
 
 
-def deploy_role(
+def api_deploy_role(
     *,
     name: str,
     account_id: str,
@@ -227,17 +235,98 @@ def deploy_role(
     prefix: str,
 ) -> aws.iam.Role:
     role = aws.iam.Role(
-        "deploy",
+        "api-deploy",
         name=name,
         description="buddybird-api GitHub Actions image push and ECS service update",
-        assume_role_policy=_trust_policy(account_id, DEPLOY_SUBS),
+        assume_role_policy=_trust_policy(account_id, API_DEPLOY_SUBS),
     )
 
     aws.iam.RolePolicy(
-        "deploy",
+        "api-deploy",
         role=role.name,
-        policy=_deploy_policy(
+        policy=_api_deploy_policy(
             account_id, region, repository_arn, cluster_arn, cluster_name, prefix
+        ),
+    )
+
+    return role
+
+
+def _bo_fe_deploy_policy(
+    account_id: str,
+    region: str,
+    repository_arn: pulumi.Input[str],
+    cluster_name: str,
+    prefix: str,
+) -> pulumi.Output[str]:
+    return aws.iam.get_policy_document_output(
+        statements=[
+            GetPolicyDocumentStatementArgs(
+                sid="EcrLogin",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["ecr:GetAuthorizationToken"],
+                resources=["*"],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="EcrPush",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=ECR_PUSH_ACTIONS,
+                resources=[repository_arn],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="RegisterTaskDefinition",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"],
+                resources=["*"],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="UpdateService",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["ecs:UpdateService", "ecs:DescribeServices"],
+                resources=[
+                    f"arn:aws:ecs:{region}:{account_id}:service/{cluster_name}/{prefix}-*"
+                ],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="PassExecRole",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["iam:PassRole"],
+                resources=[
+                    f"arn:aws:iam::{account_id}:role/{prefix}-*-exec",
+                ],
+                conditions=[
+                    GetPolicyDocumentStatementConditionArgs(
+                        test="StringEquals",
+                        variable="iam:PassedToService",
+                        values=["ecs-tasks.amazonaws.com"],
+                    )
+                ],
+            ),
+        ]
+    ).json
+
+
+def backoffice_frontend_deploy_role(
+    *,
+    name: str,
+    account_id: str,
+    region: str,
+    repository_arn: pulumi.Input[str],
+    cluster_name: str,
+    prefix: str,
+) -> aws.iam.Role:
+    role = aws.iam.Role(
+        "bo-fe-deploy",
+        name=name,
+        description="buddybird-backoffice-frontend GitHub Actions image push and ECS service update",
+        assume_role_policy=_trust_policy(account_id, BO_FE_DEPLOY_SUBS),
+    )
+
+    aws.iam.RolePolicy(
+        "bo-fe-deploy",
+        role=role.name,
+        policy=_bo_fe_deploy_policy(
+            account_id, region, repository_arn, cluster_name, prefix
         ),
     )
 
@@ -334,7 +423,7 @@ def rotation_redeploy(
     )
 
 
-def site_deploy_role(
+def landing_fe_deploy_role(
     *,
     name: str,
     account_id: str,
@@ -342,14 +431,14 @@ def site_deploy_role(
     distribution_arn: pulumi.Input[str],
 ) -> aws.iam.Role:
     role = aws.iam.Role(
-        "site-deploy",
+        "landing-fe-deploy",
         name=name,
         description="buddybird-landing GitHub Actions S3 sync and CloudFront invalidation",
-        assume_role_policy=_trust_policy(account_id, SITE_DEPLOY_SUBS),
+        assume_role_policy=_trust_policy(account_id, LANDING_FE_DEPLOY_SUBS),
     )
 
     aws.iam.RolePolicy(
-        "site-deploy",
+        "landing-fe-deploy",
         role=role.name,
         policy=aws.iam.get_policy_document_output(
             statements=[
@@ -362,7 +451,7 @@ def site_deploy_role(
                 GetPolicyDocumentStatementArgs(
                     sid="SyncSiteObjects",
                     effect=PolicyStatementEffect.ALLOW,
-                    actions=SITE_SYNC_ACTIONS,
+                    actions=LANDING_FE_SYNC_ACTIONS,
                     resources=[pulumi.Output.format("{0}/*", bucket_arn)],
                 ),
                 GetPolicyDocumentStatementArgs(

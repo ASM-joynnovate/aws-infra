@@ -12,13 +12,19 @@ from data import (
     database,
     db_subnet_group,
 )
-from deploy import deploy_role, ecr_repository, rotation_redeploy, site_deploy_role
+from deploy import (
+    api_deploy_role,
+    backoffice_frontend_deploy_role,
+    ecr_repository,
+    landing_fe_deploy_role,
+    rotation_redeploy,
+)
 from service import api_service, backoffice_frontend_service
 from edge import distribution, site_bucket
 
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
-SITE_PREFIX = "jn-buddybird-site"
+LANDING_FE_PREFIX = "jn-buddybird-site"
 ECS_CLUSTER_NAME = "jn-cluster"
 
 CLOUDFLARE_ZONE_ID = "fa5a1e637498dd11b4bf43211181f9e8"
@@ -60,7 +66,7 @@ backoffice_frontend_repository = ecr_repository(
     BACKOFFICE_FRONTEND_PREFIX, logical_name="backoffice-frontend"
 )
 
-deploy = deploy_role(
+deploy = api_deploy_role(
     name=f"{API_PREFIX}-deploy",
     account_id=account_id,
     region=region,
@@ -139,7 +145,16 @@ for env, api_settings in API_ENVIRONMENTS.items():
         priority=backoffice_frontend_settings["priority"],
     )
 
-site = site_bucket(f"{SITE_PREFIX}-{account_id}-{region}")
+backoffice_frontend_deploy = backoffice_frontend_deploy_role(
+    name=f"{BACKOFFICE_FRONTEND_PREFIX}-deploy",
+    account_id=account_id,
+    region=region,
+    repository_arn=backoffice_frontend_repository.arn,
+    cluster_name=ECS_CLUSTER_NAME,
+    prefix=BACKOFFICE_FRONTEND_PREFIX,
+)
+
+site = site_bucket(f"{LANDING_FE_PREFIX}-{account_id}-{region}")
 
 cdn = distribution(
     bucket=site,
@@ -148,8 +163,8 @@ cdn = distribution(
     aliases=[ROOT_DOMAIN, f"www.{ROOT_DOMAIN}"],
 )
 
-site_deploy = site_deploy_role(
-    name=f"{SITE_PREFIX}-deploy",
+landing_fe_deploy = landing_fe_deploy_role(
+    name=f"{LANDING_FE_PREFIX}-deploy",
     account_id=account_id,
     bucket_arn=site.arn,
     distribution_arn=cdn.arn,
@@ -185,4 +200,5 @@ pulumi.export("deploy_role_arn", deploy.arn)
 pulumi.export("site_bucket_name", site.id)
 pulumi.export("site_distribution_id", cdn.id)
 pulumi.export("site_distribution_domain", cdn.domain_name)
-pulumi.export("site_deploy_role_arn", site_deploy.arn)
+pulumi.export("backoffice_frontend_deploy_role_arn", backoffice_frontend_deploy.arn)
+pulumi.export("site_deploy_role_arn", landing_fe_deploy.arn)

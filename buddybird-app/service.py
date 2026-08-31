@@ -5,6 +5,7 @@ import pulumi_aws as aws
 
 API_CONTAINER_PORT = 8000
 BACKOFFICE_FRONTEND_PORT = 3000
+MBTI_WEB_PORT = 3000
 TASK_CPU = "256"
 TASK_MEMORY = "512"
 HEALTH_PATH = "/api/healthz"
@@ -378,6 +379,63 @@ def backoffice_frontend_service(
         target_group_name=target_group_name,
         container_name="backoffice-frontend",
         port=BACKOFFICE_FRONTEND_PORT,
+        container=container,
+        execution_role=execution,
+        vpc_id=vpc_id,
+        subnet_ids=subnet_ids,
+        task_security_group_id=task_security_group_id,
+        cluster_arn=cluster_arn,
+        listener_arn=listener_arn,
+        hostname=hostname,
+        priority=priority,
+    )
+
+
+def mbti_web_service(
+    env: str,
+    *,
+    name: str,
+    image: pulumi.Input[str],
+    region: str,
+    vpc_id: pulumi.Input[str],
+    subnet_ids: pulumi.Input[list],
+    task_security_group_id: pulumi.Input[str],
+    cluster_arn: pulumi.Input[str],
+    listener_arn: pulumi.Input[str],
+    hostname: str,
+    priority: int,
+) -> aws.ecs.Service:
+    log_group = _log_group(f"mbti-web-{env}", name)
+
+    execution = _execution_role(f"mbti-web-exec-{env}", name)
+
+    container = pulumi.Output.all(image=image, log_group=log_group.name).apply(
+        lambda a: json.dumps([
+            {
+                "name": "mbti-web",
+                "image": a["image"],
+                "essential": True,
+                "portMappings": [
+                    {"containerPort": MBTI_WEB_PORT, "protocol": "tcp"}
+                ],
+                "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {
+                        "awslogs-group": a["log_group"],
+                        "awslogs-region": region,
+                        "awslogs-stream-prefix": "mbti-web",
+                    },
+                },
+            }
+        ])
+    )
+
+    return _fargate_service(
+        f"mbti-web-{env}",
+        name=name,
+        target_group_name=name,
+        container_name="mbti-web",
+        port=MBTI_WEB_PORT,
         container=container,
         execution_role=execution,
         vpc_id=vpc_id,

@@ -21,7 +21,7 @@ from deploy import (
     mbti_web_deploy_role,
     rotation_redeploy,
 )
-from service import api_service, backoffice_frontend_service
+from service import api_service, backoffice_frontend_service, mbti_web_service
 from edge import distribution, site_bucket
 
 API_PREFIX = "jn-buddybird-api"
@@ -43,6 +43,10 @@ API_ENVIRONMENTS = {
 BACKOFFICE_FRONTEND_ENVIRONMENTS = {
     "prod": {"hostname": f"backoffice.{ROOT_DOMAIN}", "priority": 30},
     "dev": {"hostname": f"dev-backoffice.{ROOT_DOMAIN}", "priority": 40},
+}
+
+MBTI_WEB_ENVIRONMENTS = {
+    "prod": {"hostname": f"mbti.{ROOT_DOMAIN}", "priority": 50},
 }
 
 INFRA_STACK = "organization/joynnovate-infra/prod"
@@ -164,6 +168,23 @@ for env, api_settings in API_ENVIRONMENTS.items():
         priority=backoffice_frontend_settings["priority"],
     )
 
+for env, mbti_web_settings in MBTI_WEB_ENVIRONMENTS.items():
+    mbti_web_service(
+        env,
+        name=f"{MBTI_WEB_PREFIX}-{env}",
+        image=pulumi.Output.concat(
+            mbti_web_repository.repository_url, f":{env}-bootstrap"
+        ),
+        region=region,
+        vpc_id=infra.get_output("vpc_id"),
+        subnet_ids=infra.get_output("public_subnet_ids"),
+        task_security_group_id=infra.get_output("task_security_group_id"),
+        cluster_arn=infra.get_output("cluster_arn"),
+        listener_arn=infra.get_output("https_listener_arn"),
+        hostname=mbti_web_settings["hostname"],
+        priority=mbti_web_settings["priority"],
+    )
+
 backoffice_frontend_deploy = backoffice_frontend_deploy_role(
     name=f"{BACKOFFICE_FRONTEND_PREFIX}-deploy",
     account_id=account_id,
@@ -193,6 +214,7 @@ for label, hostname, target in (
     ("root", ROOT_DOMAIN, cdn.domain_name),
     ("www", f"www.{ROOT_DOMAIN}", cdn.domain_name),
     ("dev", f"dev.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
+    ("mbti", f"mbti.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
     ("backoffice", f"backoffice.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
     ("dev-backoffice", f"dev-backoffice.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
 ):

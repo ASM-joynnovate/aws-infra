@@ -11,17 +11,17 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | 파일 | 역할 |
 |---|---|
 | `__main__.py` | 데이터 버킷, 환경별 구성, DNS 레코드, 출력값 |
-| `deploy.py` | ECR 저장소, 배포 역할, rotation 재배포 Lambda |
+| `deploy.py` | ECR 저장소, api와 backoffice frontend 배포 역할, `mbti_web_deploy_role`, rotation 재배포 Lambda |
 | `data.py` | RDS 서브넷 그룹, RDS 인스턴스, 앱 시크릿, DB readonly 시크릿 |
-| `service.py` | 로그 그룹, IAM 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스 |
+| `service.py` | 로그 그룹, IAM 역할, api와 backoffice frontend ECS 서비스, `mbti_web_service` |
 | `edge.py` | 랜딩 페이지 버킷, CloudFront, OAC, rewrite 함수 |
 
 ## 환경
 
-| 환경 | api 호스트명 | backoffice frontend 호스트명 |
-|---|---|---|
-| prod | `buddybird.xyz` | `backoffice.buddybird.xyz` |
-| dev | `dev.buddybird.xyz` | `dev-backoffice.buddybird.xyz` |
+| 환경 | api 호스트명 | backoffice frontend 호스트명 | mbti web 호스트명 |
+|---|---|---|---|
+| prod | `buddybird.xyz` | `backoffice.buddybird.xyz` | `mbti.buddybird.xyz` |
+| dev | `dev.buddybird.xyz` | `dev-backoffice.buddybird.xyz` | - |
 
 ## 이름 규칙
 
@@ -40,6 +40,9 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | backoffice frontend: 타깃 그룹 | `jn-buddybird-bo-fe-<env>` |
 | backoffice frontend: execution role | `jn-buddybird-backoffice-frontend-<env>-exec` |
 | backoffice frontend: 로그 그룹 | `/ecs/jn-buddybird-backoffice-frontend-<env>` |
+| mbti web: ECS 서비스, task definition, 타깃 그룹 | `jn-buddybird-mbti-prod` |
+| mbti web: execution role | `jn-buddybird-mbti-prod-exec` |
+| mbti web: 로그 그룹 | `/ecs/jn-buddybird-mbti-prod` |
 
 ### 공통 이름
 
@@ -49,6 +52,8 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | api 배포 역할 | `jn-buddybird-api-deploy` |
 | backoffice frontend ECR 저장소 | `jn-buddybird-backoffice-frontend` |
 | backoffice frontend 배포 역할 | `jn-buddybird-backoffice-frontend-deploy` |
+| mbti web ECR 저장소 | `jn-buddybird-mbti` |
+| mbti web 배포 역할 | `jn-buddybird-mbti-deploy` |
 | 랜딩 페이지 버킷 | `jn-buddybird-site-<계정>-<리전>` |
 | 랜딩 페이지 배포 역할 | `jn-buddybird-site-deploy` |
 
@@ -222,6 +227,53 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | 환경 변수 | X |
 | 시크릿 | X |
 
+## mbti web
+
+### ECR 저장소
+
+| 항목 | 값 |
+|---|---|
+| 이름 | `jn-buddybird-mbti` |
+| 태그 변경 | IMMUTABLE |
+| 스캔 | 푸시 시 |
+| 태그 없는 이미지 | 7일 후 삭제 |
+| 보관 | 최근 20개 |
+
+### 배포 역할
+
+#### 신뢰 정책
+
+- 이름: `jn-buddybird-mbti-deploy`
+- `buddybird-mbti-web` 레포지토리
+  - `ref:refs/heads/main`
+
+#### 권한
+
+| 대상 | 액션 |
+|---|---|
+| `*` | `ecr:GetAuthorizationToken`, `ecs:RegisterTaskDefinition`, `ecs:DescribeTaskDefinition` |
+| ECR 저장소 | 레이어 업로드, `ecr:PutImage`, `ecr:DescribeImages` |
+| ECS 서비스 `jn-buddybird-mbti-*` | `ecs:UpdateService`, `ecs:DescribeServices` |
+| `*-exec` 역할 | `iam:PassRole` (`ecs-tasks.amazonaws.com` 한정) |
+
+### ECS 서비스
+
+| 항목 | 값 |
+|---|---|
+| 환경 | prod |
+| 호스트명 | `mbti.buddybird.xyz` |
+| 아키텍처 | ARM64 Fargate |
+| cpu | 256 |
+| memory | 512 |
+| 포트 | 3000 |
+| 헬스체크 | `/api/healthz` |
+| 타깃 그룹 이름 | `jn-buddybird-mbti-prod` |
+| 역할 | execution role만 사용 |
+| circuit breaker | 활성화, 실패 시 자동 롤백 |
+| task role | X |
+| 환경 변수 | X |
+| 시크릿 | X |
+
 ## 랜딩 페이지
 
 ### 버킷
@@ -275,6 +327,7 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | 20 | `dev.buddybird.xyz` | `/api/*` |
 | 30 | `backoffice.buddybird.xyz` | 전체 |
 | 40 | `dev-backoffice.buddybird.xyz` | 전체 |
+| 50 | `mbti.buddybird.xyz` | 전체 |
 
 ## DNS
 
@@ -285,6 +338,7 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | `dev.buddybird.xyz` | ALB | 300초 | 비활성 |
 | `backoffice.buddybird.xyz` | ALB | 300초 | 비활성 |
 | `dev-backoffice.buddybird.xyz` | ALB | 300초 | 비활성 |
+| `mbti.buddybird.xyz` | ALB | 300초 | 비활성 |
 
 ## 배포
 
@@ -294,6 +348,7 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 |---|---|
 | api | `buddybird-api` GitHub Actions |
 | backoffice frontend | `buddybird-backoffice-frontend` GitHub Actions |
+| mbti web | `buddybird-mbti-web` GitHub Actions |
 | 랜딩 페이지 | `buddybird-landing` GitHub Actions |
 
 이 스택에서 컨테이너 정의를 변경한 경우 `pulumi up` 후 서비스를 수동으로 갱신합니다.
@@ -316,6 +371,12 @@ aws ecs update-service --cluster jn-cluster --service <서비스> \
 |---|---|
 | release-please 릴리즈 PR 머지(dev) | 이미지 빌드와 ECR 푸시 → dev 서비스 갱신 |
 | push to main | prod 서비스 갱신 |
+
+### mbti web 배포
+
+| 트리거 | 동작 |
+|---|---|
+| release-please 릴리즈 PR merge | 이미지 빌드와 ECR push 후 prod 서비스 갱신 |
 
 ### 수동 단계
 
@@ -345,5 +406,5 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly;
 ### 최초 구축 순서
 
 1. ECR 저장소와 배포 역할만 먼저 적용
-2. api ECR에 `bootstrap` 태그로, backoffice frontend ECR에 `dev-bootstrap`과 `prod-bootstrap` 태그로 이미지 푸시
+2. api ECR에 `bootstrap` 태그로, backoffice frontend ECR에 `dev-bootstrap`과 `prod-bootstrap` 태그로, mbti web ECR에 `prod-bootstrap` 태그로 이미지 푸시
 3. 나머지 리소스 적용

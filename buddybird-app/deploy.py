@@ -30,6 +30,11 @@ BO_FE_DEPLOY_SUBS = [
     f"{BO_FE_SUB_PREFIX}:ref:refs/heads/dev",
 ]
 
+MBTI_WEB_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-mbti-web@1257251018"
+MBTI_WEB_DEPLOY_SUBS = [
+    f"{MBTI_WEB_SUB_PREFIX}:ref:refs/heads/main",
+]
+
 LANDING_FE_SYNC_ACTIONS = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
 
 ECR_PUSH_ACTIONS = [
@@ -326,6 +331,87 @@ def backoffice_frontend_deploy_role(
         "bo-fe-deploy",
         role=role.name,
         policy=_bo_fe_deploy_policy(
+            account_id, region, repository_arn, cluster_name, prefix
+        ),
+    )
+
+    return role
+
+
+def _mbti_web_deploy_policy(
+    account_id: str,
+    region: str,
+    repository_arn: pulumi.Input[str],
+    cluster_name: str,
+    prefix: str,
+) -> pulumi.Output[str]:
+    return aws.iam.get_policy_document_output(
+        statements=[
+            GetPolicyDocumentStatementArgs(
+                sid="EcrLogin",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["ecr:GetAuthorizationToken"],
+                resources=["*"],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="EcrPush",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=ECR_PUSH_ACTIONS,
+                resources=[repository_arn],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="RegisterTaskDefinition",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"],
+                resources=["*"],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="UpdateService",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["ecs:UpdateService", "ecs:DescribeServices"],
+                resources=[
+                    f"arn:aws:ecs:{region}:{account_id}:service/{cluster_name}/{prefix}-*"
+                ],
+            ),
+            GetPolicyDocumentStatementArgs(
+                sid="PassExecRole",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["iam:PassRole"],
+                resources=[
+                    f"arn:aws:iam::{account_id}:role/{prefix}-*-exec",
+                ],
+                conditions=[
+                    GetPolicyDocumentStatementConditionArgs(
+                        test="StringEquals",
+                        variable="iam:PassedToService",
+                        values=["ecs-tasks.amazonaws.com"],
+                    )
+                ],
+            ),
+        ]
+    ).json
+
+
+def mbti_web_deploy_role(
+    *,
+    name: str,
+    account_id: str,
+    region: str,
+    repository_arn: pulumi.Input[str],
+    cluster_name: str,
+    prefix: str,
+) -> aws.iam.Role:
+    role = aws.iam.Role(
+        "mbti-web-deploy",
+        name=name,
+        description="buddybird-mbti-web GitHub Actions image push and ECS service update",
+        assume_role_policy=_trust_policy(account_id, MBTI_WEB_DEPLOY_SUBS),
+    )
+
+    aws.iam.RolePolicy(
+        "mbti-web-deploy",
+        role=role.name,
+        policy=_mbti_web_deploy_policy(
             account_id, region, repository_arn, cluster_name, prefix
         ),
     )

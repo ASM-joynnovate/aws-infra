@@ -18,6 +18,7 @@ from deploy import (
     backoffice_frontend_deploy_role,
     ecr_repository,
     landing_fe_deploy_role,
+    mbti_web_deploy_role,
     rotation_redeploy,
 )
 from service import api_service, backoffice_frontend_service
@@ -26,6 +27,7 @@ from edge import distribution, site_bucket
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
 LANDING_FE_PREFIX = "jn-buddybird-site"
+MBTI_WEB_PREFIX = "jn-buddybird-mbti"
 ECS_CLUSTER_NAME = "jn-cluster"
 
 CLOUDFLARE_ZONE_ID = "fa5a1e637498dd11b4bf43211181f9e8"
@@ -66,6 +68,7 @@ repository = ecr_repository(API_PREFIX, logical_name="api")
 backoffice_frontend_repository = ecr_repository(
     BACKOFFICE_FRONTEND_PREFIX, logical_name="backoffice-frontend"
 )
+mbti_web_repository = ecr_repository(MBTI_WEB_PREFIX, logical_name="mbti-web")
 
 deploy = api_deploy_role(
     name=f"{API_PREFIX}-deploy",
@@ -75,6 +78,15 @@ deploy = api_deploy_role(
     cluster_arn=infra.get_output("cluster_arn"),
     cluster_name=ECS_CLUSTER_NAME,
     prefix=API_PREFIX,
+)
+
+mbti_web_deploy = mbti_web_deploy_role(
+    name=f"{MBTI_WEB_PREFIX}-deploy",
+    account_id=account_id,
+    region=region,
+    repository_arn=mbti_web_repository.arn,
+    cluster_name=ECS_CLUSTER_NAME,
+    prefix=MBTI_WEB_PREFIX,
 )
 
 subnet_group = db_subnet_group(API_PREFIX, infra.get_output("private_subnet_ids"))
@@ -203,9 +215,11 @@ pulumi.export(
     "backoffice_frontend_repository_url",
     backoffice_frontend_repository.repository_url,
 )
+pulumi.export("mbti_web_repository_url", mbti_web_repository.repository_url)
 pulumi.export("deploy_role_arn", deploy.arn)
 pulumi.export("site_bucket_name", site.id)
 pulumi.export("site_distribution_id", cdn.id)
 pulumi.export("site_distribution_domain", cdn.domain_name)
 pulumi.export("backoffice_frontend_deploy_role_arn", backoffice_frontend_deploy.arn)
+pulumi.export("mbti_web_deploy_role_arn", mbti_web_deploy.arn)
 pulumi.export("site_deploy_role_arn", landing_fe_deploy.arn)

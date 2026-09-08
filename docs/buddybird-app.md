@@ -246,6 +246,7 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 - 이름: `jn-buddybird-mbti-deploy`
 - `buddybird-mbti-web` 레포지토리
   - `ref:refs/heads/main`
+  - `environment:prod`
 
 #### 권한
 

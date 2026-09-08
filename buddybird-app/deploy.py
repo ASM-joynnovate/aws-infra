@@ -33,6 +33,7 @@ BO_FE_DEPLOY_SUBS = [
 MBTI_WEB_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-mbti-web@1257251018"
 MBTI_WEB_DEPLOY_SUBS = [
     f"{MBTI_WEB_SUB_PREFIX}:ref:refs/heads/main",
+    f"{MBTI_WEB_SUB_PREFIX}:environment:prod",
 ]
 
 LANDING_FE_SYNC_ACTIONS = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]

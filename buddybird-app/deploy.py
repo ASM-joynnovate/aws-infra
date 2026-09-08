@@ -64,7 +64,7 @@ def handler(event, context):
     ecs.update_service(
         cluster=os.environ["CLUSTER"],
         service=os.environ["SERVICE"],
-        force_new_deployment=True,
+        forceNewDeployment=True,
     )
 """
 

@@ -198,3 +198,109 @@ def distribution(
     )
 
     return cdn
+
+
+def mbti_web_distribution(
+    *,
+    alb_dns_name: pulumi.Input[str],
+    certificate_arn: pulumi.Input[str],
+    hostname: str,
+) -> aws.cloudfront.Distribution:
+    image_cache = aws.cloudfront.CachePolicy(
+        "mbti-web-images",
+        name="jn-buddybird-mbti-images",
+        min_ttl=0,
+        default_ttl=0,
+        max_ttl=31536000,
+        parameters_in_cache_key_and_forwarded_to_origin=aws.cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginArgs(
+            cookies_config=aws.cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginCookiesConfigArgs(
+                cookie_behavior="none",
+            ),
+            headers_config=aws.cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginHeadersConfigArgs(
+                header_behavior="whitelist",
+                headers=aws.cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginHeadersConfigHeadersArgs(
+                    items=["Accept"],
+                ),
+            ),
+            query_strings_config=aws.cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginQueryStringsConfigArgs(
+                query_string_behavior="whitelist",
+                query_strings=aws.cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginQueryStringsConfigQueryStringsArgs(
+                    items=["url", "w", "q"],
+                ),
+            ),
+            enable_accept_encoding_brotli=False,
+            enable_accept_encoding_gzip=False,
+        ),
+    )
+    caching_optimized = aws.cloudfront.get_cache_policy_output(name="Managed-CachingOptimized")
+    caching_disabled = aws.cloudfront.get_cache_policy_output(name="Managed-CachingDisabled")
+    all_viewer = aws.cloudfront.get_origin_request_policy_output(name="Managed-AllViewer")
+    host_only = aws.cloudfront.get_origin_request_policy_output(name="Managed-HostHeaderOnly")
+
+    return aws.cloudfront.Distribution(
+        "mbti-web",
+        comment="buddybird MBTI image and static asset cache",
+        enabled=True,
+        is_ipv6_enabled=True,
+        aliases=[hostname],
+        origins=[
+            aws.cloudfront.DistributionOriginArgs(
+                origin_id="mbti-web",
+                domain_name=alb_dns_name,
+                custom_origin_config=aws.cloudfront.DistributionOriginCustomOriginConfigArgs(
+                    http_port=80,
+                    https_port=443,
+                    origin_protocol_policy="https-only",
+                    origin_ssl_protocols=["TLSv1.2"],
+                ),
+            ),
+        ],
+        default_cache_behavior=aws.cloudfront.DistributionDefaultCacheBehaviorArgs(
+            target_origin_id="mbti-web",
+            viewer_protocol_policy="redirect-to-https",
+            allowed_methods=["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+            cached_methods=["GET", "HEAD"],
+            compress=True,
+            cache_policy_id=caching_disabled.id,
+            origin_request_policy_id=all_viewer.id,
+        ),
+        ordered_cache_behaviors=[
+            aws.cloudfront.DistributionOrderedCacheBehaviorArgs(
+                path_pattern="/_next/image",
+                target_origin_id="mbti-web",
+                viewer_protocol_policy="redirect-to-https",
+                allowed_methods=["GET", "HEAD"],
+                cached_methods=["GET", "HEAD"],
+                compress=False,
+                cache_policy_id=image_cache.id,
+                origin_request_policy_id=host_only.id,
+            ),
+            aws.cloudfront.DistributionOrderedCacheBehaviorArgs(
+                path_pattern="/_next/static/*",
+                target_origin_id="mbti-web",
+                viewer_protocol_policy="redirect-to-https",
+                allowed_methods=["GET", "HEAD"],
+                cached_methods=["GET", "HEAD"],
+                compress=True,
+                cache_policy_id=caching_optimized.id,
+                origin_request_policy_id=host_only.id,
+            ),
+        ],
+        custom_error_responses=[
+            aws.cloudfront.DistributionCustomErrorResponseArgs(
+                error_code=code,
+                error_caching_min_ttl=0,
+            )
+            for code in (403, 404, 500, 502, 503, 504)
+        ],
+        restrictions=aws.cloudfront.DistributionRestrictionsArgs(
+            geo_restriction=aws.cloudfront.DistributionRestrictionsGeoRestrictionArgs(
+                restriction_type="none",
+            ),
+        ),
+        viewer_certificate=aws.cloudfront.DistributionViewerCertificateArgs(
+            acm_certificate_arn=certificate_arn,
+            ssl_support_method="sni-only",
+            minimum_protocol_version="TLSv1.2_2021",
+        ),
+    )

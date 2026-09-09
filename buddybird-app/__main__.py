@@ -22,7 +22,7 @@ from deploy import (
     rotation_redeploy,
 )
 from service import api_service, backoffice_frontend_service, mbti_web_service
-from edge import distribution, site_bucket
+from edge import distribution, mbti_web_distribution, site_bucket
 
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
@@ -203,6 +203,17 @@ cdn = distribution(
     aliases=[ROOT_DOMAIN, f"www.{ROOT_DOMAIN}"],
 )
 
+mbti_cdn = mbti_web_distribution(
+    alb_dns_name=infra.get_output("alb_dns_name"),
+    certificate_arn=infra.get_output("cloudfront_certificate_arn"),
+    hostname=MBTI_WEB_ENVIRONMENTS["prod"]["hostname"],
+)
+# Keep ALB routing until the distribution has passed pre-cutover checks.
+mbti_cdn_enabled = config.get_bool("mbtiCdnEnabled") or False
+mbti_dns_target = (
+    mbti_cdn.domain_name if mbti_cdn_enabled else infra.get_output("alb_dns_name")
+)
+
 landing_fe_deploy = landing_fe_deploy_role(
     name=f"{LANDING_FE_PREFIX}-deploy",
     account_id=account_id,
@@ -214,7 +225,7 @@ for label, hostname, target in (
     ("root", ROOT_DOMAIN, cdn.domain_name),
     ("www", f"www.{ROOT_DOMAIN}", cdn.domain_name),
     ("dev", f"dev.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
-    ("mbti", f"mbti.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
+    ("mbti", f"mbti.{ROOT_DOMAIN}", mbti_dns_target),
     ("backoffice", f"backoffice.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
     ("dev-backoffice", f"dev-backoffice.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
 ):
@@ -245,3 +256,7 @@ pulumi.export("site_distribution_domain", cdn.domain_name)
 pulumi.export("backoffice_frontend_deploy_role_arn", backoffice_frontend_deploy.arn)
 pulumi.export("mbti_web_deploy_role_arn", mbti_web_deploy.arn)
 pulumi.export("site_deploy_role_arn", landing_fe_deploy.arn)
+
+pulumi.export("mbti_web_distribution_id", mbti_cdn.id)
+pulumi.export("mbti_web_distribution_domain", mbti_cdn.domain_name)
+pulumi.export("mbti_web_cdn_enabled", mbti_cdn_enabled)

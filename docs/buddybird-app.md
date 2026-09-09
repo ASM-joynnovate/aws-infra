@@ -14,7 +14,7 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | `deploy.py` | ECR 저장소, api와 backoffice frontend 배포 역할, `mbti_web_deploy_role`, rotation 재배포 Lambda |
 | `data.py` | RDS 서브넷 그룹, RDS 인스턴스, 앱 시크릿, DB readonly 시크릿 |
 | `service.py` | 로그 그룹, IAM 역할, api와 backoffice frontend ECS 서비스, `mbti_web_service` |
-| `edge.py` | 랜딩 페이지 버킷, CloudFront, OAC, rewrite 함수 |
+| `edge.py` | 랜딩 페이지 버킷·CloudFront·OAC·rewrite 함수, MBTI 전용 CloudFront |
 
 ## 환경
 
@@ -275,6 +275,76 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | 환경 변수 | X |
 | 시크릿 | X |
 
+### MBTI CloudFront
+
+첫 접속의 이미지 변환 결과를 공유하고 ECS task 교체 후에도 캐시를 재사용하는 전용 distribution입니다.
+Origin은 기존 ALB이며, 모든 경로에서 `Host`를 전달하고 HTTPS로 연결합니다.
+랜딩 페이지의 rewrite 함수와 오류 페이지 치환은 사용하지 않습니다.
+
+| 경로 | 캐시 | Origin request policy |
+|---|---|---|
+| `/_next/image` | `url`, `w`, `q`, `Accept`별 캐시, 쿠키 제외 | `HostHeaderOnly` |
+| `/_next/static/*` | `CachingOptimized`, 압축 활성화 | `HostHeaderOnly` |
+| 그 외: HTML, RSC, API, 원본 PNG | `CachingDisabled` | `AllViewer` |
+
+이미지 캐시 TTL은 최소·기본 0초, 최대 365일이며 origin의 `Cache-Control`을 따릅니다.
+따라서 기존 앵무새 이미지의 4시간 TTL도 유지됩니다.
+403·404·500·502·503·504의 오류 캐시 TTL은 0초입니다.
+CDN과 Next.js 모두 캐시가 없는 이미지의 첫 요청에는 변환 시간이 발생합니다.
+
+| Stack output | 용도 |
+|---|---|
+| `mbti_web_distribution_id` | distribution 상태·지표 조회 |
+| `mbti_web_distribution_domain` | DNS 전환 전 CDN 접속 검증 |
+| `mbti_web_cdn_enabled` | DNS 전환 상태 |
+
+#### 생성·검증·DNS 전환
+
+`buddybird-app:mbtiCdnEnabled`의 기본값은 `false`입니다. 첫 적용에서는 CDN만 생성하고 DNS는 ALB를 유지합니다.
+다음 명령은 `buddybird-app/`에서 실행합니다. AWS 인증은 `joynnovate` profile을 사용합니다.
+
+```bash
+export AWS_PROFILE=joynnovate
+pulumi preview --stack prod --diff
+pulumi up --stack prod
+mbti_cdn_domain=$(pulumi stack output mbti_web_distribution_domain --stack prod)
+curl --connect-to "mbti.buddybird.xyz:443:${mbti_cdn_domain}:443" \
+  --compressed -sS -D - -o /dev/null https://mbti.buddybird.xyz/
+```
+
+같은 접속 방식으로 실제 페이지의 `/_next/image` URL과 JS·CSS·글꼴을 GET 요청합니다.
+같은 이미지 URL과 `Accept`를 반복 요청했을 때 `X-Cache: Hit from cloudfront`인지 확인합니다.
+Next.js의 `x-nextjs-cache`는 CDN 적중 여부를 나타내지 않습니다.
+이미지의 `url`, `w`, `q`, `Accept`를 바꿔 응답이 섞이지 않는지도 확인합니다.
+HTML·RSC·API는 캐시되지 않아야 합니다.
+
+TLS·라우팅·캐시 검증을 통과한 뒤 DNS를 전환합니다.
+
+```bash
+pulumi config set buddybird-app:mbtiCdnEnabled true --stack prod
+pulumi preview --stack prod --diff
+pulumi up --stack prod
+```
+
+변경된 `Pulumi.prod.yaml`은 배포 설정으로 함께 관리합니다. DNS TTL은 300초이며 Cloudflare proxy는 비활성입니다.
+기존 CI `buddybird-app up` workflow로도 같은 설정을 적용할 수 있습니다.
+배포 때마다 전체 CDN 캐시를 무효화하지 않습니다. 해시가 바뀐 정적 파일은 새 경로로 제공됩니다.
+
+전환 후 빈 브라우저 캐시에서 검사 진행·결과 URL 직접 접속·공유 이미지 생성을 확인합니다.
+CDN 캐시를 채운 다음 데스크톱 1280px·모바일 화면 390px에서 각각 5회 측정하며,
+초기 이미지 11개 로딩의 중앙값 1초 이하를 목표로 합니다. CDN MISS 시간은 별도로 기록합니다.
+
+#### 복구
+
+TLS 오류·이미지 혼선·기능 오류가 발생하면 아래 설정을 적용해 DNS를 기존 ALB로 복구합니다.
+CloudFront는 삭제하지 않으며 복구 중에도 기존 CDN 경로를 제공합니다.
+
+```bash
+pulumi config set buddybird-app:mbtiCdnEnabled false --stack prod
+pulumi preview --stack prod --diff
+pulumi up --stack prod
+```
+
 ## 랜딩 페이지
 
 ### 버킷
@@ -339,7 +409,7 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | `dev.buddybird.xyz` | ALB | 300초 | 비활성 |
 | `backoffice.buddybird.xyz` | ALB | 300초 | 비활성 |
 | `dev-backoffice.buddybird.xyz` | ALB | 300초 | 비활성 |
-| `mbti.buddybird.xyz` | ALB | 300초 | 비활성 |
+| `mbti.buddybird.xyz` | `mbtiCdnEnabled=true`: MBTI CloudFront, 기본값: ALB | 300초 | 비활성 |
 
 ## 배포
 

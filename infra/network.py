@@ -10,7 +10,6 @@ ANY_PROTOCOL = "-1"
 
 ALB_PORTS = [80, 443]
 DB_PORT = 5432
-CACHE_PORTS = [6379, 6380]
 
 
 class Network(pulumi.ComponentResource):
@@ -102,7 +101,6 @@ class Network(pulumi.ComponentResource):
                 "alb_security_group": self.alb_security_group,
                 "task_security_group": self.task_security_group,
                 "db_security_group": self.db_security_group,
-                "cache_security_group": self.cache_security_group,
                 "ssm_security_group": self.ssm_security_group,
             }
         )
@@ -188,27 +186,6 @@ class Network(pulumi.ComponentResource):
             opts=child,
         )
 
-        self.cache_security_group = aws.ec2.SecurityGroup(
-            "cache",
-            name=f"{name}-cache",
-            description="ElastiCache",
-            vpc_id=self.vpc.id,
-            tags={"Name": f"{name}-cache"},
-            opts=child,
-        )
-
-        for port in CACHE_PORTS:
-            aws.vpc.SecurityGroupIngressRule(
-                f"cache-from-task-{port}",
-                security_group_id=self.cache_security_group.id,
-                ip_protocol=aws.ec2.ProtocolType.TCP,
-                from_port=port,
-                to_port=port,
-                referenced_security_group_id=self.task_security_group.id,
-                description=f"From ECS task on {port}",
-                opts=child,
-            )
-
         self.ssm_security_group = aws.ec2.SecurityGroup(
             "ssm",
             name=f"{name}-ssm",
@@ -233,7 +210,6 @@ class Network(pulumi.ComponentResource):
             ("alb", self.alb_security_group),
             ("task", self.task_security_group),
             ("db", self.db_security_group),
-            ("cache", self.cache_security_group),
             ("ssm", self.ssm_security_group),
         ]
         for rule_name, security_group in groups:

@@ -74,7 +74,9 @@ Pulumi가 스택 secret을 KMS 키로 암호화한다.
 | `backofficePassword` | `buddybird-app` |
 | `readonlyDbPassword` | `buddybird-app` |
 
-`buddybird-app`의 `dev`와 `prod` 스택은 스택을 나눌 때 값을 복사했기 때문에 현재 같은 secret 값을 사용한다.
+`buddybird-app`의 `dev`와 `prod` 스택은 `authAccessTokenKey`와 `authRefreshTokenKey`에 서로 다른 값을 사용한다.
+JWT 서명 키가 같으면 dev에서 발급한 토큰이 prod에서도 유효하기 때문이다.
+`backofficePassword`와 `readonlyDbPassword`는 두 스택이 같은 값을 사용한다.
 
 `Pulumi.<스택>.yaml`에는 다음 항목만 작성한다.
 

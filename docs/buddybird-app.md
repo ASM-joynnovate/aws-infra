@@ -13,8 +13,8 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | `__main__.py` | 데이터 버킷, 환경별 구성, DNS 레코드, 컴포넌트 조립, 출력값 |
 | `deploy.py` | ECR 저장소, api와 backoffice frontend 배포 역할, `mbti_web_deploy_role`, rotation 재배포 Lambda |
 | `data.py` | 버킷 하드닝, RDS 서브넷 그룹, RDS 인스턴스, 앱 시크릿, DB readonly 시크릿 |
-| `service.py` | 로그 그룹, IAM 역할, api와 backoffice frontend ECS 서비스, `mbti_web_service` |
-| `edge.py` | `Landing` 컴포넌트, MBTI 전용 CloudFront |
+| `service.py` | `WebService` 컴포넌트, api ECS 서비스, 로그 그룹과 IAM 역할과 Fargate 서비스 헬퍼 |
+| `edge.py` | `Landing`, `MbtiCdn` 컴포넌트 |
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
 | `dns.py` | Cloudflare CNAME 레코드 |
 | `moved.py` | 컴포넌트 이전에 사용하는 aliases 헬퍼, 이전 완료 후 삭제 |
@@ -27,6 +27,8 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | 컴포넌트 | 이름 | 리소스 |
 |---|---|---|
 | `Landing` | `landing-prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
+| `WebService` | `backoffice-frontend-dev`, `backoffice-frontend-prod`, `mbti-web-prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
+| `MbtiCdn` | `mbti-cdn-prod` | 이미지 캐시 정책, CloudFront |
 
 ## 환경
 

@@ -2,7 +2,6 @@ import json
 
 import pulumi
 import pulumi_aws as aws
-import pulumi_cloudflare as cloudflare
 
 from data import (
     CORS_ORIGINS,
@@ -20,9 +19,9 @@ from deploy import (
     mbti_web_deploy_role,
     rotation_redeploy,
 )
-from dns import CLOUDFLARE_ZONE_ID, DNS_RECORD_TTL
-from edge import Landing, LandingArgs, mbti_web_distribution
-from service import api_service, backoffice_frontend_service, mbti_web_service
+from dns import cname_record
+from edge import Landing, LandingArgs, MbtiCdn, MbtiCdnArgs
+from service import WebService, WebServiceArgs, api_service
 
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
@@ -156,38 +155,60 @@ for env, api_settings in API_ENVIRONMENTS.items():
         service=api,
     )
 
-    backoffice_frontend_service(
-        env,
-        name=f"{BACKOFFICE_FRONTEND_PREFIX}-{env}",
-        target_group_name=f"jn-buddybird-bo-fe-{env}",
-        image=pulumi.Output.concat(
-            backoffice_frontend_repository.repository_url, f":{env}-bootstrap"
+    WebService(
+        f"backoffice-frontend-{env}",
+        WebServiceArgs(
+            service="backoffice-frontend",
+            service_name=f"{BACKOFFICE_FRONTEND_PREFIX}-{env}",
+            target_group_name=f"jn-buddybird-bo-fe-{env}",
+            image=pulumi.Output.concat(
+                backoffice_frontend_repository.repository_url, f":{env}-bootstrap"
+            ),
+            region=region,
+            hostname=backoffice_frontend_settings["hostname"],
+            priority=backoffice_frontend_settings["priority"],
+            dns_target=alb_dns_name,
+            vpc_id=vpc_id,
+            subnet_ids=public_subnet_ids,
+            task_security_group_id=task_security_group_id,
+            cluster_arn=cluster_arn,
+            listener_arn=https_listener_arn,
         ),
-        region=region,
-        vpc_id=vpc_id,
-        subnet_ids=public_subnet_ids,
-        task_security_group_id=task_security_group_id,
-        cluster_arn=cluster_arn,
-        listener_arn=https_listener_arn,
-        hostname=backoffice_frontend_settings["hostname"],
-        priority=backoffice_frontend_settings["priority"],
     )
 
+mbti_cdn = MbtiCdn(
+    "mbti-cdn-prod",
+    MbtiCdnArgs(
+        hostname=MBTI_WEB_ENVIRONMENTS["prod"]["hostname"],
+        alb_dns_name=alb_dns_name,
+        certificate_arn=cloudfront_certificate_arn,
+    ),
+)
+mbti_cdn_enabled = config.get_bool("mbtiCdnEnabled") or False
+mbti_dns_target = (
+    mbti_cdn.distribution.domain_name if mbti_cdn_enabled else alb_dns_name
+)
+
 for env, mbti_web_settings in MBTI_WEB_ENVIRONMENTS.items():
-    mbti_web_service(
-        env,
-        name=f"{MBTI_WEB_PREFIX}-{env}",
-        image=pulumi.Output.concat(
-            mbti_web_repository.repository_url, f":{env}-bootstrap"
+    WebService(
+        f"mbti-web-{env}",
+        WebServiceArgs(
+            service="mbti-web",
+            service_name=f"{MBTI_WEB_PREFIX}-{env}",
+            target_group_name=f"{MBTI_WEB_PREFIX}-{env}",
+            image=pulumi.Output.concat(
+                mbti_web_repository.repository_url, f":{env}-bootstrap"
+            ),
+            region=region,
+            hostname=mbti_web_settings["hostname"],
+            priority=mbti_web_settings["priority"],
+            dns_target=mbti_dns_target,
+            vpc_id=vpc_id,
+            subnet_ids=public_subnet_ids,
+            task_security_group_id=task_security_group_id,
+            cluster_arn=cluster_arn,
+            listener_arn=https_listener_arn,
         ),
-        region=region,
-        vpc_id=vpc_id,
-        subnet_ids=public_subnet_ids,
-        task_security_group_id=task_security_group_id,
-        cluster_arn=cluster_arn,
-        listener_arn=https_listener_arn,
-        hostname=mbti_web_settings["hostname"],
-        priority=mbti_web_settings["priority"],
     )
 
 backoffice_frontend_deploy = backoffice_frontend_deploy_role(
@@ -211,35 +232,12 @@ landing = Landing(
     ),
 )
 
-mbti_cdn = mbti_web_distribution(
-    alb_dns_name=alb_dns_name,
-    certificate_arn=cloudfront_certificate_arn,
-    hostname=MBTI_WEB_ENVIRONMENTS["prod"]["hostname"],
+cname_record(
+    "dev",
+    hostname=API_ENVIRONMENTS["dev"]["hostname"],
+    target=alb_dns_name,
+    opts=pulumi.ResourceOptions(),
 )
-# Keep ALB routing until the distribution has passed pre-cutover checks.
-mbti_cdn_enabled = config.get_bool("mbtiCdnEnabled") or False
-mbti_dns_target = mbti_cdn.domain_name if mbti_cdn_enabled else alb_dns_name
-
-for label, hostname, target in (
-    ("dev", f"dev.{ROOT_DOMAIN}", alb_dns_name),
-    ("mbti", f"mbti.{ROOT_DOMAIN}", mbti_dns_target),
-    ("backoffice", f"backoffice.{ROOT_DOMAIN}", alb_dns_name),
-    (
-        "dev-backoffice",
-        f"dev-backoffice.{ROOT_DOMAIN}",
-        alb_dns_name,
-    ),
-):
-    cloudflare.DnsRecord(
-        label,
-        zone_id=CLOUDFLARE_ZONE_ID,
-        name=hostname,
-        type="CNAME",
-        content=target,
-        ttl=DNS_RECORD_TTL,
-        proxied=False,
-        comment="buddybird service",
-    )
 
 pulumi.export("data_dev_bucket_name", buckets["dev"].id)
 pulumi.export("data_prod_bucket_name", buckets["prod"].id)
@@ -258,6 +256,6 @@ pulumi.export("backoffice_frontend_deploy_role_arn", backoffice_frontend_deploy.
 pulumi.export("mbti_web_deploy_role_arn", mbti_web_deploy.arn)
 pulumi.export("landing_deploy_role_arn", landing.deploy_role.arn)
 
-pulumi.export("mbti_web_distribution_id", mbti_cdn.id)
-pulumi.export("mbti_web_distribution_domain", mbti_cdn.domain_name)
+pulumi.export("mbti_web_distribution_id", mbti_cdn.distribution.id)
+pulumi.export("mbti_web_distribution_domain", mbti_cdn.distribution.domain_name)
 pulumi.export("mbti_web_cdn_enabled", mbti_cdn_enabled)

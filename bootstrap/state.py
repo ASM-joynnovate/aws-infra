@@ -9,10 +9,6 @@ from pulumi_aws.iam import (
     PolicyStatementEffect,
 )
 
-from moved import from_root
-
-PREVIOUS_NAME = "state"
-
 
 @dataclass(frozen=True)
 class StateBucketArgs:
@@ -34,7 +30,7 @@ class StateBucket(pulumi.ComponentResource):
             bucket=args.bucket_name,
             bucket_namespace="account-regional",
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, PREVIOUS_NAME),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(protect=True),
             ),
         )
@@ -45,7 +41,7 @@ class StateBucket(pulumi.ComponentResource):
             versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
                 status="Enabled"
             ),
-            opts=from_root(self, PREVIOUS_NAME),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketServerSideEncryptionConfiguration(
@@ -58,7 +54,7 @@ class StateBucket(pulumi.ComponentResource):
                     )
                 )
             ],
-            opts=from_root(self, PREVIOUS_NAME),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketPublicAccessBlock(
@@ -68,7 +64,7 @@ class StateBucket(pulumi.ComponentResource):
             block_public_policy=True,
             ignore_public_acls=True,
             restrict_public_buckets=True,
-            opts=from_root(self, PREVIOUS_NAME),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketOwnershipControls(
@@ -77,7 +73,7 @@ class StateBucket(pulumi.ComponentResource):
             rule=aws.s3.BucketOwnershipControlsRuleArgs(
                 object_ownership="BucketOwnerEnforced"
             ),
-            opts=from_root(self, PREVIOUS_NAME),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketLifecycleConfiguration(
@@ -102,7 +98,7 @@ class StateBucket(pulumi.ComponentResource):
                 ),
             ],
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, PREVIOUS_NAME),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(depends_on=[versioning]),
             ),
         )
@@ -136,7 +132,7 @@ class StateBucket(pulumi.ComponentResource):
                     )
                 ]
             ).json,
-            opts=from_root(self, "state-tls-only"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.register_outputs({"bucket": self.bucket})

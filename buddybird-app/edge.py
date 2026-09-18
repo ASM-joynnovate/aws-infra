@@ -11,7 +11,6 @@ from pulumi_aws.iam import (
 
 from data import harden_bucket
 from dns import cname_record
-from moved import from_root
 from oidc import trust_policy
 
 API_PATH_PATTERN = "/api/*"
@@ -70,9 +69,9 @@ class Landing(pulumi.ComponentResource):
         self.bucket = aws.s3.Bucket(
             f"{name}-bucket",
             bucket=args.bucket_name,
-            opts=from_root(self, "site"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
-        harden_bucket(name, self.bucket, from_root(self, "site"))
+        harden_bucket(name, self.bucket, pulumi.ResourceOptions(parent=self))
 
         access_control = aws.cloudfront.OriginAccessControl(
             f"{name}-oac",
@@ -81,7 +80,7 @@ class Landing(pulumi.ComponentResource):
             signing_behavior="always",
             signing_protocol="sigv4",
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, "site"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -92,7 +91,7 @@ class Landing(pulumi.ComponentResource):
             runtime="cloudfront-js-2.0",
             code=REWRITE_FUNCTION,
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, "rewrite"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -182,7 +181,7 @@ class Landing(pulumi.ComponentResource):
                 ssl_support_method="sni-only",
                 minimum_protocol_version="TLSv1.2_2021",
             ),
-            opts=from_root(self, "site"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketPolicy(
@@ -233,7 +232,7 @@ class Landing(pulumi.ComponentResource):
                     ),
                 ]
             ).json,
-            opts=from_root(self, "site"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.deploy_role = aws.iam.Role(
@@ -242,7 +241,7 @@ class Landing(pulumi.ComponentResource):
             description="buddybird-landing GitHub Actions S3 sync and CloudFront invalidation",
             assume_role_policy=trust_policy(args.account_id, LANDING_DEPLOY_SUBS),
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, "landing-fe-deploy"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -272,20 +271,20 @@ class Landing(pulumi.ComponentResource):
                     ),
                 ]
             ).json,
-            opts=from_root(self, "landing-fe-deploy"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         cname_record(
             f"{name}-dns-root",
             hostname=args.root_domain,
             target=self.distribution.domain_name,
-            opts=from_root(self, "root"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
         cname_record(
             f"{name}-dns-www",
             hostname=www_domain,
             target=self.distribution.domain_name,
-            opts=from_root(self, "www"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.register_outputs(
@@ -339,7 +338,7 @@ class MbtiCdn(pulumi.ComponentResource):
                 enable_accept_encoding_gzip=False,
             ),
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, "mbti-web-images"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -430,7 +429,7 @@ class MbtiCdn(pulumi.ComponentResource):
                 ssl_support_method="sni-only",
                 minimum_protocol_version="TLSv1.2_2021",
             ),
-            opts=from_root(self, "mbti-web"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.register_outputs({"distribution": self.distribution})

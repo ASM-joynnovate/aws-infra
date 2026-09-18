@@ -9,15 +9,11 @@ from pulumi_aws.iam import (
     PolicyStatementEffect,
 )
 
-from moved import from_root
-
 ALB_LOG_SERVICE = "logdelivery.elasticloadbalancing.amazonaws.com"
 FLOW_LOG_SERVICE = "delivery.logs.amazonaws.com"
 
-PREVIOUS_NAME = "logs"
 
-
-@dataclass
+@dataclass(frozen=True)
 class LoggingArgs:
     bucket_name: str
     account_id: str
@@ -40,7 +36,7 @@ class Logging(pulumi.ComponentResource):
             f"{name}-bucket",
             bucket=args.bucket_name,
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, PREVIOUS_NAME),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(protect=True),
             ),
         )
@@ -55,7 +51,7 @@ class Logging(pulumi.ComponentResource):
                     )
                 )
             ],
-            opts=from_root(self, PREVIOUS_NAME),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketPublicAccessBlock(
@@ -65,7 +61,7 @@ class Logging(pulumi.ComponentResource):
             block_public_policy=True,
             ignore_public_acls=True,
             restrict_public_buckets=True,
-            opts=from_root(self, PREVIOUS_NAME),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketLifecycleConfiguration(
@@ -81,7 +77,7 @@ class Logging(pulumi.ComponentResource):
                     ),
                 )
             ],
-            opts=from_root(self, PREVIOUS_NAME),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.policy = aws.s3.BucketPolicy(
@@ -163,7 +159,7 @@ class Logging(pulumi.ComponentResource):
                     ),
                 ]
             ).json,
-            opts=from_root(self, PREVIOUS_NAME),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.register_outputs({"bucket": self.bucket, "policy": self.policy})

@@ -3,8 +3,6 @@ from dataclasses import dataclass
 import pulumi
 import pulumi_aws as aws
 
-from moved import renamed
-
 VPC_CIDR = "10.0.0.0/16"
 PUBLIC_SUBNET_CIDRS = ["10.0.0.0/24", "10.0.1.0/24"]
 PRIVATE_SUBNET_CIDRS = ["10.0.10.0/24", "10.0.11.0/24"]
@@ -16,7 +14,7 @@ ALB_PORTS = [80, 443]
 DB_PORT = 5432
 
 
-@dataclass
+@dataclass(frozen=True)
 class NetworkArgs:
     region: str
     log_bucket_arn: pulumi.Input[str]
@@ -40,14 +38,14 @@ class Network(pulumi.ComponentResource):
             enable_dns_support=True,
             enable_dns_hostnames=True,
             tags={"Name": f"{name}-vpc"},
-            opts=renamed(self, "main"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         internet_gateway = aws.ec2.InternetGateway(
             f"{name}-igw",
             vpc_id=self.vpc.id,
             tags={"Name": f"{name}-igw"},
-            opts=renamed(self, "main"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         public_route_table = aws.ec2.RouteTable(
@@ -60,14 +58,14 @@ class Network(pulumi.ComponentResource):
                 )
             ],
             tags={"Name": f"{name}-public"},
-            opts=renamed(self, "public"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         private_route_table = aws.ec2.RouteTable(
             f"{name}-private",
             vpc_id=self.vpc.id,
             tags={"Name": f"{name}-private"},
-            opts=renamed(self, "private"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.public_subnets = self._subnets(
@@ -84,7 +82,7 @@ class Network(pulumi.ComponentResource):
             vpc_endpoint_type="Gateway",
             route_table_ids=[public_route_table.id, private_route_table.id],
             tags={"Name": f"{name}-s3-endpoint"},
-            opts=renamed(self, "s3"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self._security_groups(name)
@@ -99,7 +97,7 @@ class Network(pulumi.ComponentResource):
             ),
             tags={"Name": f"{name}-flow-log"},
             opts=pulumi.ResourceOptions.merge(
-                renamed(self, "vpc"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(depends_on=[args.log_bucket_policy]),
             ),
         )
@@ -134,13 +132,13 @@ class Network(pulumi.ComponentResource):
                 cidr_block=cidr,
                 map_public_ip_on_launch=public,
                 tags={"Name": f"{name}-{tier}-{az}", "Tier": tier},
-                opts=renamed(self, f"{tier}-{az}"),
+                opts=pulumi.ResourceOptions(parent=self),
             )
             aws.ec2.RouteTableAssociation(
                 f"{name}-{tier}-{az}",
                 subnet_id=subnet.id,
                 route_table_id=route_table.id,
-                opts=renamed(self, f"{tier}-{az}"),
+                opts=pulumi.ResourceOptions(parent=self),
             )
             subnets.append(subnet)
         return subnets
@@ -152,7 +150,7 @@ class Network(pulumi.ComponentResource):
             description="ALB",
             vpc_id=self.vpc.id,
             tags={"Name": f"{name}-alb"},
-            opts=renamed(self, "alb"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         for port in ALB_PORTS:
@@ -164,7 +162,7 @@ class Network(pulumi.ComponentResource):
                 to_port=port,
                 cidr_ipv4=ANY_IPV4,
                 description=f"From internet on {port}",
-                opts=renamed(self, f"alb-{port}"),
+                opts=pulumi.ResourceOptions(parent=self),
             )
 
         self.task_security_group = aws.ec2.SecurityGroup(
@@ -173,7 +171,7 @@ class Network(pulumi.ComponentResource):
             description="ECS task",
             vpc_id=self.vpc.id,
             tags={"Name": f"{name}-task"},
-            opts=renamed(self, "task"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.vpc.SecurityGroupIngressRule(
@@ -182,7 +180,7 @@ class Network(pulumi.ComponentResource):
             ip_protocol=ANY_PROTOCOL,
             referenced_security_group_id=self.alb_security_group.id,
             description="From ALB security group, all ports",
-            opts=renamed(self, "task-from-alb"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.db_security_group = aws.ec2.SecurityGroup(
@@ -191,7 +189,7 @@ class Network(pulumi.ComponentResource):
             description="RDS",
             vpc_id=self.vpc.id,
             tags={"Name": f"{name}-db"},
-            opts=renamed(self, "db"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.vpc.SecurityGroupIngressRule(
@@ -202,7 +200,7 @@ class Network(pulumi.ComponentResource):
             to_port=DB_PORT,
             referenced_security_group_id=self.task_security_group.id,
             description=f"From ECS task on {DB_PORT}",
-            opts=renamed(self, "db-from-task"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.ssm_security_group = aws.ec2.SecurityGroup(
@@ -211,7 +209,7 @@ class Network(pulumi.ComponentResource):
             description="SSM bastion",
             vpc_id=self.vpc.id,
             tags={"Name": f"{name}-ssm"},
-            opts=renamed(self, "ssm"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.vpc.SecurityGroupIngressRule(
@@ -222,7 +220,7 @@ class Network(pulumi.ComponentResource):
             to_port=DB_PORT,
             referenced_security_group_id=self.ssm_security_group.id,
             description=f"From SSM bastion on {DB_PORT}",
-            opts=renamed(self, "db-from-ssm"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         groups = [
@@ -238,12 +236,12 @@ class Network(pulumi.ComponentResource):
                 ip_protocol=ANY_PROTOCOL,
                 cidr_ipv4=ANY_IPV4,
                 description="All outbound traffic",
-                opts=renamed(self, rule_name),
+                opts=pulumi.ResourceOptions(parent=self),
             )
 
         aws.ec2.DefaultSecurityGroup(
             f"{name}-default",
             vpc_id=self.vpc.id,
             tags={"Name": f"{name}-default-do-not-use"},
-            opts=renamed(self, "default"),
+            opts=pulumi.ResourceOptions(parent=self),
         )

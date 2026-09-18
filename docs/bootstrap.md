@@ -10,7 +10,6 @@ Pulumi state 버킷, KMS 키, CI 역할 구성
 | `state.py` | `StateBucket` 컴포넌트 |
 | `secrets_key.py` | `SecretsKey` 컴포넌트 |
 | `ci.py` | `CiRoles` 컴포넌트 |
-| `moved.py` | 컴포넌트 이전에 사용하는 aliases 헬퍼, 이전 완료 후 삭제 |
 
 ## 리소스 구성
 

@@ -5,14 +5,12 @@ import pulumi
 import pulumi_aws as aws
 import pulumi_cloudflare as cloudflare
 
-from moved import renamed
-
 CLOUDFRONT_CERTIFICATE_REGION = "us-east-1"
 ALB_TLS_POLICY = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 ACM_VALIDATION_RECORD_TTL = 60
 
 
-@dataclass
+@dataclass(frozen=True)
 class ServingArgs:
     domain: str
     zone_id: pulumi.Input[str]
@@ -35,7 +33,7 @@ class Serving(pulumi.ComponentResource):
         self.cluster = aws.ecs.Cluster(
             f"{name}-cluster",
             name=f"{name}-cluster",
-            opts=renamed(self, "main"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         us_east_1 = aws.Provider(
@@ -49,7 +47,7 @@ class Serving(pulumi.ComponentResource):
             domain_name=args.domain,
             subject_alternative_names=[f"*.{args.domain}"],
             validation_method="DNS",
-            opts=renamed(self, "alb"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.cloudfront_certificate = aws.acm.Certificate(
@@ -58,7 +56,7 @@ class Serving(pulumi.ComponentResource):
             subject_alternative_names=[f"*.{args.domain}"],
             validation_method="DNS",
             opts=pulumi.ResourceOptions.merge(
-                renamed(self, "cloudfront"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(provider=us_east_1),
             ),
         )
@@ -73,7 +71,7 @@ class Serving(pulumi.ComponentResource):
             ttl=ACM_VALIDATION_RECORD_TTL,
             proxied=False,
             comment="ACM domain validation",
-            opts=renamed(self, "acm-validation"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
         validation_fqdns = [validation_record.name]
 
@@ -81,7 +79,7 @@ class Serving(pulumi.ComponentResource):
             f"{name}-alb-certificate-validation",
             certificate_arn=alb_certificate.arn,
             validation_record_fqdns=validation_fqdns,
-            opts=renamed(self, "alb"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.acm.CertificateValidation(
@@ -89,7 +87,7 @@ class Serving(pulumi.ComponentResource):
             certificate_arn=self.cloudfront_certificate.arn,
             validation_record_fqdns=validation_fqdns,
             opts=pulumi.ResourceOptions.merge(
-                renamed(self, "cloudfront"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(provider=us_east_1),
             ),
         )
@@ -106,7 +104,7 @@ class Serving(pulumi.ComponentResource):
                 enabled=True,
             ),
             opts=pulumi.ResourceOptions.merge(
-                renamed(self, "main"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(depends_on=[args.log_bucket_policy]),
             ),
         )
@@ -128,7 +126,7 @@ class Serving(pulumi.ComponentResource):
                     ),
                 )
             ],
-            opts=renamed(self, "https"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.lb.Listener(
@@ -146,7 +144,7 @@ class Serving(pulumi.ComponentResource):
                     ),
                 )
             ],
-            opts=renamed(self, "http"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.register_outputs(

@@ -19,22 +19,28 @@ buddybird 서비스의 Amazon Web Services(AWS) 인프라를 Pulumi로 관리한
 | --- | --- | --- | --- |
 | `joynnovate-bootstrap` | `bootstrap/` | - state 버킷<br>- Key Management Service(KMS) 키<br>- OpenID Connect(OIDC) provider<br>- 지속적 통합(Continuous Integration, CI) 역할 | 사람 |
 | `joynnovate-infra` | `infra/` | - Virtual Private Cloud(VPC)<br>- Elastic Container Service(ECS) 클러스터<br>- Application Load Balancer(ALB)<br>- AWS Certificate Manager(ACM) 인증서<br>- 로그 버킷<br>- 예산 알림 | GitHub Actions |
-| `buddybird-app` | `buddybird-app/` | - Elastic Container Registry(ECR)<br>- ECS 서비스<br>- Relational Database Service(RDS)<br>- Simple Storage Service(S3) 버킷<br>- CloudFront<br>- 배포 역할 | GitHub Actions |
+| `buddybird-shared` | `buddybird-shared/` | - Elastic Container Registry(ECR)<br>- 이미지 배포 역할<br>- Relational Database Service(RDS) 서브넷 그룹 | GitHub Actions |
+| `buddybird-app` | `buddybird-app/` | - ECS 서비스<br>- RDS<br>- Simple Storage Service(S3) 버킷<br>- CloudFront<br>- 랜딩 배포 역할 | GitHub Actions |
 
 설계 문서는 `docs/` 아래에 프로젝트 이름으로 있다.
 
 프로젝트마다 `prod` 스택 하나를 사용한다.
 
-`buddybird-app`이 `joynnovate-infra`의 출력값을 StackReference로 읽기 때문에 `joynnovate-infra`를 먼저 적용한다.
+`buddybird-shared`는 `joynnovate-infra`의 출력값을, `buddybird-app`은 `joynnovate-infra`와 `buddybird-shared`의 출력값을 StackReference로 읽는다.
+읽히는 프로젝트를 먼저 적용한다.
 
 ## 소유 규칙
 
 | 자원 | 소유 프로젝트 |
 | --- | --- |
 | 여러 제품이 함께 사용하는 것 | `joynnovate-infra` |
-| buddybird 전용 | `buddybird-app` |
+| buddybird 전용이고 환경에 속하는 것 | `buddybird-app` |
+| buddybird 전용이고 환경이 공유하는 것 | `buddybird-shared` |
 | 인프라를 적용하는 역할 | `joynnovate-bootstrap` |
-| 앱을 배포하는 역할 | `buddybird-app` |
+| 이미지를 배포하는 역할 | `buddybird-shared` |
+| 랜딩을 배포하는 역할 | `buddybird-app` |
+
+랜딩 배포 역할은 랜딩 버킷과 CloudFront의 ARN을 직접 참조하기 때문에 `buddybird-app`에 둔다.
 
 `buddybird.xyz`를 경로로 나누어 사용하기 때문에 호스트명 레코드도 `buddybird-app`이 소유한다.
 
@@ -104,7 +110,7 @@ gh api /repos/<조직>/<저장소> --jq '[.owner.id, .id]'
 
 ## 적용
 
-적용 순서는 `bootstrap`, `infra`, `buddybird-app`이다.
+적용 순서는 `bootstrap`, `infra`, `buddybird-shared`, `buddybird-app`이다.
 
 | 시점 | 동작 |
 | --- | --- |

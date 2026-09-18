@@ -1,3 +1,3 @@
 target-version = "py314"
-src = ["bootstrap", "infra", "buddybird-app"]
+src = ["bootstrap", "infra", "buddybird-app", "buddybird-shared"]
 extend-exclude = ["*.md"]

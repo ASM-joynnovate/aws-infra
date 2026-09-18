@@ -1,0 +1,21 @@
+name: buddybird-shared up
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: pulumi-buddybird-shared-prod
+  cancel-in-progress: false
+
+jobs:
+  up:
+    uses: ./.github/workflows/_pulumi-up.yml
+    with:
+      work-dir: buddybird-shared
+      stack-name: organization/buddybird-shared/prod
+      iam-role-suffix: pulumi
+      environment: prod

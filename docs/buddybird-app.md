@@ -1,18 +1,20 @@
 # buddybird-app
 
-buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
+buddybird 전용 RDS, ECS 서비스, CloudFront 구성
+
+ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-shared` 프로젝트가 소유합니다.
+이 문서는 서비스별로 구성돼 있어 `buddybird-shared`가 소유한 리소스도 해당 서비스 절에 함께 적습니다.
 
 | 항목 | 값 |
 |---|---|
-| StackReference | `organization/joynnovate-infra/prod` |
+| StackReference | `organization/joynnovate-infra/prod`, `organization/buddybird-shared/prod` |
 
 ## 파일 구성
 
 | 파일 | 역할 |
 |---|---|
 | `__main__.py` | 상수, 환경별 설정, 컴포넌트 조립, 출력값 |
-| `deploy.py` | `ImageDelivery` 컴포넌트 |
-| `data.py` | `DataBucket`, `Database`, `DbNetwork` 컴포넌트, 버킷 하드닝 |
+| `data.py` | `DataBucket`, `Database` 컴포넌트, 버킷 하드닝 |
 | `service.py` | `Api`, `WebService` 컴포넌트, 로그 그룹과 실행 역할과 Fargate 서비스 헬퍼 |
 | `edge.py` | `Landing`, `MbtiCdn` 컴포넌트 |
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
@@ -33,8 +35,6 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | `Landing` | `landing-prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 | `WebService` | `backoffice-frontend-dev`, `backoffice-frontend-prod`, `mbti-web-prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
 | `MbtiCdn` | `mbti-cdn-prod` | 이미지 캐시 정책, CloudFront |
-| `ImageDelivery` | `api`, `backoffice-frontend`, `mbti-web` | ECR 저장소, 라이프사이클 정책, 배포 역할과 정책 |
-| `DbNetwork` | `db-network` | RDS 서브넷 그룹 |
 
 ## 환경
 
@@ -66,16 +66,17 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 
 ### 공통 이름
 
-| 리소스 | 이름 |
-|---|---|
-| api ECR 저장소 | `jn-buddybird-api` |
-| api 배포 역할 | `jn-buddybird-api-deploy` |
-| backoffice frontend ECR 저장소 | `jn-buddybird-backoffice-frontend` |
-| backoffice frontend 배포 역할 | `jn-buddybird-backoffice-frontend-deploy` |
-| mbti web ECR 저장소 | `jn-buddybird-mbti` |
-| mbti web 배포 역할 | `jn-buddybird-mbti-deploy` |
-| 랜딩 페이지 버킷 | `jn-buddybird-site-<계정>-<리전>` |
-| 랜딩 페이지 배포 역할 | `jn-buddybird-site-deploy` |
+| 리소스 | 이름 | 소유 프로젝트 |
+|---|---|---|
+| api ECR 저장소 | `jn-buddybird-api` | `buddybird-shared` |
+| api 배포 역할 | `jn-buddybird-api-deploy` | `buddybird-shared` |
+| backoffice frontend ECR 저장소 | `jn-buddybird-backoffice-frontend` | `buddybird-shared` |
+| backoffice frontend 배포 역할 | `jn-buddybird-backoffice-frontend-deploy` | `buddybird-shared` |
+| mbti web ECR 저장소 | `jn-buddybird-mbti` | `buddybird-shared` |
+| mbti web 배포 역할 | `jn-buddybird-mbti-deploy` | `buddybird-shared` |
+| RDS 서브넷 그룹 | `jn-buddybird-api` | `buddybird-shared` |
+| 랜딩 페이지 버킷 | `jn-buddybird-site-<계정>-<리전>` | `buddybird-app` |
+| 랜딩 페이지 배포 역할 | `jn-buddybird-site-deploy` | `buddybird-app` |
 
 ## api
 
@@ -497,6 +498,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly;
 
 ### 최초 구축 순서
 
-1. ECR 저장소와 배포 역할만 먼저 적용
+1. `buddybird-shared` 적용
 2. api ECR에 `bootstrap` 태그로, backoffice frontend ECR에 `dev-bootstrap`과 `prod-bootstrap` 태그로, mbti web ECR에 `prod-bootstrap` 태그로 이미지 푸시
-3. 나머지 리소스 적용
+3. `buddybird-app` 적용

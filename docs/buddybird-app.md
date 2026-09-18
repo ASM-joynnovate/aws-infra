@@ -102,8 +102,8 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | mbti web ECR 저장소 | `jn-buddybird-mbti` | `buddybird-shared` |
 | mbti web 배포 역할 | `jn-buddybird-mbti-deploy` | `buddybird-shared` |
 | RDS 서브넷 그룹 | `jn-buddybird-api` | `buddybird-shared` |
-| 랜딩 페이지 버킷 | `jn-buddybird-site-<계정>-<리전>` | `buddybird-app` |
-| 랜딩 페이지 배포 역할 | `jn-buddybird-site-deploy` | `buddybird-app` |
+| 랜딩 버킷 | `jn-buddybird-site-<계정>-<리전>` | `buddybird-app` |
+| 랜딩 배포 역할 | `jn-buddybird-site-deploy` | `buddybird-app` |
 
 ## api
 
@@ -328,7 +328,7 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 
 첫 접속의 이미지 변환 결과를 공유하고 ECS task 교체 후에도 캐시를 재사용하는 전용 distribution입니다.
 Origin은 기존 ALB이며, 모든 경로에서 `Host`를 전달하고 HTTPS로 연결합니다.
-랜딩 페이지의 rewrite 함수와 오류 페이지 치환은 사용하지 않습니다.
+랜딩의 rewrite 함수와 오류 페이지 치환은 사용하지 않습니다.
 
 | 경로 | 캐시 | Origin request policy |
 |---|---|---|
@@ -394,7 +394,7 @@ pulumi preview --stack prod --diff
 pulumi up --stack prod
 ```
 
-## 랜딩 페이지
+## 랜딩
 
 ### 버킷
 
@@ -435,8 +435,8 @@ pulumi up --stack prod
 
 | 대상 | 액션 |
 |---|---|
-| 랜딩 페이지 버킷 | `s3:ListBucket` |
-| 랜딩 페이지 버킷 객체 | `s3:PutObject`, `s3:DeleteObject`, `s3:GetObject` |
+| 랜딩 버킷 | `s3:ListBucket` |
+| 랜딩 버킷 객체 | `s3:PutObject`, `s3:DeleteObject`, `s3:GetObject` |
 | CloudFront 배포 | `cloudfront:CreateInvalidation` |
 
 ## 리스너 규칙 우선순위
@@ -472,7 +472,7 @@ pulumi up --stack prod
 | api | `buddybird-api` GitHub Actions |
 | backoffice frontend | `buddybird-backoffice-frontend` GitHub Actions |
 | mbti web | `buddybird-mbti-web` GitHub Actions |
-| 랜딩 페이지 | `buddybird-landing` GitHub Actions |
+| 랜딩 | `buddybird-landing` GitHub Actions |
 
 이 스택에서 컨테이너 정의를 변경한 경우 `pulumi up` 후 서비스를 수동으로 갱신합니다.
 

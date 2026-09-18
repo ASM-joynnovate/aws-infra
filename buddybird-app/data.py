@@ -1,3 +1,6 @@
+from collections.abc import Sequence
+from dataclasses import dataclass
+
 import pulumi
 import pulumi_aws as aws
 from pulumi_aws.iam import (
@@ -6,6 +9,8 @@ from pulumi_aws.iam import (
     GetPolicyDocumentStatementPrincipalArgs,
     PolicyStatementEffect,
 )
+
+from moved import from_root
 
 NAME_PREFIX = "jn-buddybird-v1"
 ROOT_DOMAIN = "buddybird.xyz"
@@ -186,8 +191,29 @@ def data_bucket(
     return bucket
 
 
-def db_subnet_group(name: str, subnet_ids) -> aws.rds.SubnetGroup:
-    return aws.rds.SubnetGroup("main", name=name, subnet_ids=subnet_ids)
+@dataclass(frozen=True)
+class DbNetworkArgs:
+    subnet_group_name: str
+    subnet_ids: pulumi.Input[Sequence[pulumi.Input[str]]]
+
+
+class DbNetwork(pulumi.ComponentResource):
+    def __init__(
+        self,
+        name: str,
+        args: DbNetworkArgs,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
+        super().__init__("joynnovate:buddybird:DbNetwork", name, None, opts)
+
+        self.subnet_group = aws.rds.SubnetGroup(
+            f"{name}-subnet-group",
+            name=args.subnet_group_name,
+            subnet_ids=args.subnet_ids,
+            opts=from_root(self, "main"),
+        )
+
+        self.register_outputs({"subnet_group": self.subnet_group})
 
 
 def database(

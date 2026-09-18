@@ -1,4 +1,6 @@
 import json
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 import pulumi
 import pulumi_aws as aws
@@ -9,6 +11,7 @@ from pulumi_aws.iam import (
     PolicyStatementEffect,
 )
 
+from moved import from_root
 from oidc import trust_policy
 
 API_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-api@1262535317"
@@ -18,12 +21,12 @@ API_DEPLOY_SUBS = [
     f"{API_SUB_PREFIX}:environment:prod",
 ]
 
-BO_FE_SUB_PREFIX = (
+BACKOFFICE_FRONTEND_SUB_PREFIX = (
     "repo:ASM-joynnovate@279207361/buddybird-backoffice-frontend@1342074306"
 )
-BO_FE_DEPLOY_SUBS = [
-    f"{BO_FE_SUB_PREFIX}:ref:refs/heads/main",
-    f"{BO_FE_SUB_PREFIX}:ref:refs/heads/dev",
+BACKOFFICE_FRONTEND_DEPLOY_SUBS = [
+    f"{BACKOFFICE_FRONTEND_SUB_PREFIX}:ref:refs/heads/main",
+    f"{BACKOFFICE_FRONTEND_SUB_PREFIX}:ref:refs/heads/dev",
 ]
 
 MBTI_WEB_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-mbti-web@1257251018"
@@ -63,325 +66,202 @@ def handler(event, context):
     )
 """
 
-
-def ecr_repository(name: str, logical_name: str) -> aws.ecr.Repository:
-    repository = aws.ecr.Repository(
-        logical_name,
-        name=name,
-        image_tag_mutability="IMMUTABLE",
-        image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
-            scan_on_push=True
-        ),
-    )
-
-    aws.ecr.LifecyclePolicy(
-        logical_name,
-        repository=repository.name,
-        policy=json.dumps(
-            {
-                "rules": [
-                    {
-                        "rulePriority": 1,
-                        "description": "Expire untagged images",
-                        "selection": {
-                            "tagStatus": aws.ecr.LifecyclePolicyTagStatus.UNTAGGED,
-                            "countType": aws.ecr.LifecyclePolicyCountType.SINCE_IMAGE_PUSHED,
-                            "countUnit": "days",
-                            "countNumber": ECR_UNTAGGED_EXPIRE_DAYS,
-                        },
-                        "action": {"type": aws.ecr.LifecyclePolicyActionType.EXPIRE},
-                    },
-                    {
-                        "rulePriority": 2,
-                        "description": "Keep recent images only",
-                        "selection": {
-                            "tagStatus": aws.ecr.LifecyclePolicyTagStatus.ANY,
-                            "countType": aws.ecr.LifecyclePolicyCountType.IMAGE_COUNT_MORE_THAN,
-                            "countNumber": ECR_IMAGE_LIMIT,
-                        },
-                        "action": {"type": aws.ecr.LifecyclePolicyActionType.EXPIRE},
-                    },
-                ]
-            }
-        ),
-    )
-
-    return repository
+PREVIOUS_DEPLOY_NAMES = {"backoffice-frontend": "bo-fe-deploy"}
 
 
-def _api_deploy_policy(
-    account_id: str,
-    region: str,
-    repository_arn: pulumi.Input[str],
-    cluster_arn: pulumi.Input[str],
-    cluster_name: str,
-    prefix: str,
+@dataclass(frozen=True)
+class ImageDeliveryArgs:
+    repository_name: str
+    role_name: str
+    subs: Sequence[str]
+    account_id: str
+    region: str
+    cluster_name: str
+    prefix: str
+    migration_cluster_arn: pulumi.Input[str] | None = None
+
+
+def _deploy_policy(
+    args: ImageDeliveryArgs, repository_arn: pulumi.Input[str]
 ) -> pulumi.Output[str]:
-    return aws.iam.get_policy_document_output(
-        statements=[
-            GetPolicyDocumentStatementArgs(
-                sid="EcrLogin",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecr:GetAuthorizationToken"],
-                resources=["*"],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="EcrPush",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=ECR_PUSH_ACTIONS,
-                resources=[repository_arn],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="RegisterTaskDefinition",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"],
-                resources=["*"],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="UpdateService",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecs:UpdateService", "ecs:DescribeServices"],
-                resources=[
-                    f"arn:aws:ecs:{region}:{account_id}:service/{cluster_name}/{prefix}-*"
-                ],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="RunMigrationTask",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecs:RunTask"],
-                resources=[
-                    f"arn:aws:ecs:{region}:{account_id}:task-definition/{prefix}-*:*"
-                ],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="DescribeTasks",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecs:DescribeTasks"],
-                resources=[f"arn:aws:ecs:{region}:{account_id}:task/{cluster_name}/*"],
-                conditions=[
-                    GetPolicyDocumentStatementConditionArgs(
-                        test="ArnEquals",
-                        variable="ecs:cluster",
-                        values=[cluster_arn],
-                    )
-                ],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="PassTaskRoles",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["iam:PassRole"],
-                resources=[
-                    f"arn:aws:iam::{account_id}:role/{prefix}-*-task",
-                    f"arn:aws:iam::{account_id}:role/{prefix}-*-exec",
-                ],
-                conditions=[
-                    GetPolicyDocumentStatementConditionArgs(
-                        test="StringEquals",
-                        variable="iam:PassedToService",
-                        values=["ecs-tasks.amazonaws.com"],
-                    )
-                ],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="ReadMigrationLogs",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["logs:GetLogEvents", "logs:DescribeLogStreams"],
-                resources=[
-                    f"arn:aws:logs:{region}:{account_id}:log-group:/ecs/{prefix}-*:*"
-                ],
-            ),
-        ]
-    ).json
+    account_id = args.account_id
+    region = args.region
+    prefix = args.prefix
+    cluster_name = args.cluster_name
 
-
-def api_deploy_role(
-    *,
-    name: str,
-    account_id: str,
-    region: str,
-    repository_arn: pulumi.Input[str],
-    cluster_arn: pulumi.Input[str],
-    cluster_name: str,
-    prefix: str,
-) -> aws.iam.Role:
-    role = aws.iam.Role(
-        "api-deploy",
-        name=name,
-        description="buddybird-api GitHub Actions image push and ECS service update",
-        assume_role_policy=trust_policy(account_id, API_DEPLOY_SUBS),
-    )
-
-    aws.iam.RolePolicy(
-        "api-deploy",
-        role=role.name,
-        policy=_api_deploy_policy(
-            account_id, region, repository_arn, cluster_arn, cluster_name, prefix
+    statements = [
+        GetPolicyDocumentStatementArgs(
+            sid="EcrLogin",
+            effect=PolicyStatementEffect.ALLOW,
+            actions=["ecr:GetAuthorizationToken"],
+            resources=["*"],
         ),
+        GetPolicyDocumentStatementArgs(
+            sid="EcrPush",
+            effect=PolicyStatementEffect.ALLOW,
+            actions=ECR_PUSH_ACTIONS,
+            resources=[repository_arn],
+        ),
+        GetPolicyDocumentStatementArgs(
+            sid="RegisterTaskDefinition",
+            effect=PolicyStatementEffect.ALLOW,
+            actions=["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"],
+            resources=["*"],
+        ),
+        GetPolicyDocumentStatementArgs(
+            sid="UpdateService",
+            effect=PolicyStatementEffect.ALLOW,
+            actions=["ecs:UpdateService", "ecs:DescribeServices"],
+            resources=[
+                f"arn:aws:ecs:{region}:{account_id}:service/{cluster_name}/{prefix}-*"
+            ],
+        ),
+    ]
+
+    passed_to_ecs_tasks = GetPolicyDocumentStatementConditionArgs(
+        test="StringEquals",
+        variable="iam:PassedToService",
+        values=["ecs-tasks.amazonaws.com"],
     )
 
-    return role
-
-
-def _bo_fe_deploy_policy(
-    account_id: str,
-    region: str,
-    repository_arn: pulumi.Input[str],
-    cluster_name: str,
-    prefix: str,
-) -> pulumi.Output[str]:
-    return aws.iam.get_policy_document_output(
-        statements=[
-            GetPolicyDocumentStatementArgs(
-                sid="EcrLogin",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecr:GetAuthorizationToken"],
-                resources=["*"],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="EcrPush",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=ECR_PUSH_ACTIONS,
-                resources=[repository_arn],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="RegisterTaskDefinition",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"],
-                resources=["*"],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="UpdateService",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecs:UpdateService", "ecs:DescribeServices"],
-                resources=[
-                    f"arn:aws:ecs:{region}:{account_id}:service/{cluster_name}/{prefix}-*"
-                ],
-            ),
+    if args.migration_cluster_arn is None:
+        statements.append(
             GetPolicyDocumentStatementArgs(
                 sid="PassExecRole",
                 effect=PolicyStatementEffect.ALLOW,
                 actions=["iam:PassRole"],
-                resources=[
-                    f"arn:aws:iam::{account_id}:role/{prefix}-*-exec",
-                ],
-                conditions=[
-                    GetPolicyDocumentStatementConditionArgs(
-                        test="StringEquals",
-                        variable="iam:PassedToService",
-                        values=["ecs-tasks.amazonaws.com"],
-                    )
-                ],
+                resources=[f"arn:aws:iam::{account_id}:role/{prefix}-*-exec"],
+                conditions=[passed_to_ecs_tasks],
+            )
+        )
+    else:
+        statements.extend(
+            [
+                GetPolicyDocumentStatementArgs(
+                    sid="RunMigrationTask",
+                    effect=PolicyStatementEffect.ALLOW,
+                    actions=["ecs:RunTask"],
+                    resources=[
+                        f"arn:aws:ecs:{region}:{account_id}:task-definition/{prefix}-*:*"
+                    ],
+                ),
+                GetPolicyDocumentStatementArgs(
+                    sid="DescribeTasks",
+                    effect=PolicyStatementEffect.ALLOW,
+                    actions=["ecs:DescribeTasks"],
+                    resources=[
+                        f"arn:aws:ecs:{region}:{account_id}:task/{cluster_name}/*"
+                    ],
+                    conditions=[
+                        GetPolicyDocumentStatementConditionArgs(
+                            test="ArnEquals",
+                            variable="ecs:cluster",
+                            values=[args.migration_cluster_arn],
+                        )
+                    ],
+                ),
+                GetPolicyDocumentStatementArgs(
+                    sid="PassTaskRoles",
+                    effect=PolicyStatementEffect.ALLOW,
+                    actions=["iam:PassRole"],
+                    resources=[
+                        f"arn:aws:iam::{account_id}:role/{prefix}-*-task",
+                        f"arn:aws:iam::{account_id}:role/{prefix}-*-exec",
+                    ],
+                    conditions=[passed_to_ecs_tasks],
+                ),
+                GetPolicyDocumentStatementArgs(
+                    sid="ReadMigrationLogs",
+                    effect=PolicyStatementEffect.ALLOW,
+                    actions=["logs:GetLogEvents", "logs:DescribeLogStreams"],
+                    resources=[
+                        f"arn:aws:logs:{region}:{account_id}:log-group:/ecs/{prefix}-*:*"
+                    ],
+                ),
+            ]
+        )
+
+    return aws.iam.get_policy_document_output(statements=statements).json
+
+
+class ImageDelivery(pulumi.ComponentResource):
+    def __init__(
+        self,
+        name: str,
+        args: ImageDeliveryArgs,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
+        super().__init__("joynnovate:buddybird:ImageDelivery", name, None, opts)
+        previous_deploy_name = PREVIOUS_DEPLOY_NAMES.get(name, f"{name}-deploy")
+
+        self.repository = aws.ecr.Repository(
+            f"{name}-repository",
+            name=args.repository_name,
+            image_tag_mutability="IMMUTABLE",
+            image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
+                scan_on_push=True
             ),
-        ]
-    ).json
+            opts=from_root(self, name),
+        )
 
-
-def backoffice_frontend_deploy_role(
-    *,
-    name: str,
-    account_id: str,
-    region: str,
-    repository_arn: pulumi.Input[str],
-    cluster_name: str,
-    prefix: str,
-) -> aws.iam.Role:
-    role = aws.iam.Role(
-        "bo-fe-deploy",
-        name=name,
-        description="buddybird-backoffice-frontend GitHub Actions image push and ECS service update",
-        assume_role_policy=trust_policy(account_id, BO_FE_DEPLOY_SUBS),
-    )
-
-    aws.iam.RolePolicy(
-        "bo-fe-deploy",
-        role=role.name,
-        policy=_bo_fe_deploy_policy(
-            account_id, region, repository_arn, cluster_name, prefix
-        ),
-    )
-
-    return role
-
-
-def _mbti_web_deploy_policy(
-    account_id: str,
-    region: str,
-    repository_arn: pulumi.Input[str],
-    cluster_name: str,
-    prefix: str,
-) -> pulumi.Output[str]:
-    return aws.iam.get_policy_document_output(
-        statements=[
-            GetPolicyDocumentStatementArgs(
-                sid="EcrLogin",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecr:GetAuthorizationToken"],
-                resources=["*"],
+        aws.ecr.LifecyclePolicy(
+            f"{name}-lifecycle",
+            repository=self.repository.name,
+            policy=json.dumps(
+                {
+                    "rules": [
+                        {
+                            "rulePriority": 1,
+                            "description": "Expire untagged images",
+                            "selection": {
+                                "tagStatus": aws.ecr.LifecyclePolicyTagStatus.UNTAGGED,
+                                "countType": aws.ecr.LifecyclePolicyCountType.SINCE_IMAGE_PUSHED,
+                                "countUnit": "days",
+                                "countNumber": ECR_UNTAGGED_EXPIRE_DAYS,
+                            },
+                            "action": {
+                                "type": aws.ecr.LifecyclePolicyActionType.EXPIRE
+                            },
+                        },
+                        {
+                            "rulePriority": 2,
+                            "description": "Keep recent images only",
+                            "selection": {
+                                "tagStatus": aws.ecr.LifecyclePolicyTagStatus.ANY,
+                                "countType": aws.ecr.LifecyclePolicyCountType.IMAGE_COUNT_MORE_THAN,
+                                "countNumber": ECR_IMAGE_LIMIT,
+                            },
+                            "action": {
+                                "type": aws.ecr.LifecyclePolicyActionType.EXPIRE
+                            },
+                        },
+                    ]
+                }
             ),
-            GetPolicyDocumentStatementArgs(
-                sid="EcrPush",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=ECR_PUSH_ACTIONS,
-                resources=[repository_arn],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="RegisterTaskDefinition",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"],
-                resources=["*"],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="UpdateService",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["ecs:UpdateService", "ecs:DescribeServices"],
-                resources=[
-                    f"arn:aws:ecs:{region}:{account_id}:service/{cluster_name}/{prefix}-*"
-                ],
-            ),
-            GetPolicyDocumentStatementArgs(
-                sid="PassExecRole",
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["iam:PassRole"],
-                resources=[
-                    f"arn:aws:iam::{account_id}:role/{prefix}-*-exec",
-                ],
-                conditions=[
-                    GetPolicyDocumentStatementConditionArgs(
-                        test="StringEquals",
-                        variable="iam:PassedToService",
-                        values=["ecs-tasks.amazonaws.com"],
-                    )
-                ],
-            ),
-        ]
-    ).json
+            opts=from_root(self, name),
+        )
 
+        self.deploy_role = aws.iam.Role(
+            f"{name}-deploy-role",
+            name=args.role_name,
+            description=f"buddybird-{name} GitHub Actions image push and ECS service update",
+            assume_role_policy=trust_policy(args.account_id, list(args.subs)),
+            opts=pulumi.ResourceOptions.merge(
+                from_root(self, previous_deploy_name),
+                pulumi.ResourceOptions(delete_before_replace=True),
+            ),
+        )
 
-def mbti_web_deploy_role(
-    *,
-    name: str,
-    account_id: str,
-    region: str,
-    repository_arn: pulumi.Input[str],
-    cluster_name: str,
-    prefix: str,
-) -> aws.iam.Role:
-    role = aws.iam.Role(
-        "mbti-web-deploy",
-        name=name,
-        description="buddybird-mbti-web GitHub Actions image push and ECS service update",
-        assume_role_policy=trust_policy(account_id, MBTI_WEB_DEPLOY_SUBS),
-    )
+        aws.iam.RolePolicy(
+            f"{name}-deploy-policy",
+            role=self.deploy_role.name,
+            policy=_deploy_policy(args, self.repository.arn),
+            opts=from_root(self, previous_deploy_name),
+        )
 
-    aws.iam.RolePolicy(
-        "mbti-web-deploy",
-        role=role.name,
-        policy=_mbti_web_deploy_policy(
-            account_id, region, repository_arn, cluster_name, prefix
-        ),
-    )
-
-    return role
+        self.register_outputs(
+            {"repository": self.repository, "deploy_role": self.deploy_role}
+        )
 
 
 def rotation_redeploy(

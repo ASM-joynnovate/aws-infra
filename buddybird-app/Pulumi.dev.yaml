@@ -12,16 +12,16 @@ config:
     priority: 20
     subdomain: dev
   buddybird-app:authAccessTokenKey:
-    secure: v1:+Q9vZDOBODAXvXzw:CX2uYIscTl6A8TjOB/mUzsygtbzh3fTgbZR2WcVO1EOIAxNL/RVvS+y9PKWeOTFi3mrpWZ7rhKMqX/+I
+    secure: v1:47yI+Q52OmLbE+73:sBwGDkuRFZyUeWTF3GO8B5Feva6C0N/EJPSiwwtsVKCYP4cfr1c2zjUN1lfE9RV+6O+GonbQm/Bqj7Wg
   buddybird-app:authRefreshTokenKey:
-    secure: v1:eoc5GdgDN6Pnt6jC:nYatMr4SPXraGFSiMAu1FXfk3kEJboGEiEhoc6gRKQO0L5zPewJSyMLluIcREi434iTGSUPQukxyAFZ5
+    secure: v1:tUAAz77rDtPBXobs:yZQHcaQ46gM2ndshursq7xAb3mB0x9TPjVW7u8XtPbVTzEEKXa0YO3AgUEf62sIr4s4AhbDcTar6jCaY
   buddybird-app:backofficeFrontend:
     priority: 40
     subdomain: dev-backoffice
   buddybird-app:backofficePassword:
-    secure: v1:1HM7FwMxLPnhbHjH:0WdhtnJPUe60iV8O3dm1TDAwCxglEq6rqQqaNA43Iw==
+    secure: v1:rJ1xzxXmoB3J3SIO:i3DaJd4IiAaFbDpSbEQg+B4qEs/QW65fU8EPO8grPA==
   buddybird-app:readonlyDbPassword:
-    secure: v1:UdC/irkzRomuJ4f9:P0vIlJKK97hlIZXx23Tg/ioFjciZ6wiizePaoo5baw==
+    secure: v1:RK4+XIbgEHs4cLVS:0k60YAUzBZT+O3FEpZCJE7vvPXUqL9waskunletfTQ==
   cloudflare:apiToken:
     secure: v1:A7atGv/6spOLKltI:Sri2+DZWe0nNhUEjw1PctBCTODjQwYjfNt8PUtADwiRgResyvL4xG5189mOfkul/WS6n0Ub+afKUXpuukUsUo+iSHQjG
   buddybird-app:localDataBucket: "true"

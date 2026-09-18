@@ -514,8 +514,12 @@ pulumi config set --stack <스택> --secret backofficePassword <비밀번호>
 pulumi config set --stack <스택> --secret readonlyDbPassword <비밀번호>
 ```
 
-`cloudflare:apiToken`을 제외한 값은 스택마다 다르게 설정합니다.
-현재 `dev` 스택은 `prod` 스택에서 복사한 값을 사용하고 있어 교체가 필요합니다.
+`authAccessTokenKey`와 `authRefreshTokenKey`는 스택마다 다른 값으로 설정합니다.
+JWT 서명 키가 같으면 dev에서 발급한 토큰이 prod에서도 유효합니다.
+`backofficePassword`와 `readonlyDbPassword`는 현재 `dev`와 `prod` 스택이 같은 값을 사용합니다.
+
+secret을 변경한 뒤에는 해당 스택의 api를 재배포해야 합니다.
+ECS는 task를 시작할 때 시크릿을 읽기 때문에 재배포 전까지 이전 값으로 동작합니다.
 
 ### readonly DB 사용자 생성
 

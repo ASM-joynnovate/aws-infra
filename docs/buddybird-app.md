@@ -11,8 +11,8 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | 파일 | 역할 |
 |---|---|
 | `__main__.py` | 데이터 버킷, 환경별 구성, DNS 레코드, 컴포넌트 조립, 출력값 |
-| `deploy.py` | ECR 저장소, api와 backoffice frontend 배포 역할, `mbti_web_deploy_role`, rotation 재배포 Lambda |
-| `data.py` | 버킷 하드닝, RDS 서브넷 그룹, RDS 인스턴스, 앱 시크릿, DB readonly 시크릿 |
+| `deploy.py` | `ImageDelivery` 컴포넌트, rotation 재배포 Lambda |
+| `data.py` | `DbNetwork` 컴포넌트, 버킷 하드닝, 데이터 버킷, RDS 인스턴스, 앱 시크릿, DB readonly 시크릿 |
 | `service.py` | `WebService` 컴포넌트, api ECS 서비스, 로그 그룹과 IAM 역할과 Fargate 서비스 헬퍼 |
 | `edge.py` | `Landing`, `MbtiCdn` 컴포넌트 |
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
@@ -29,6 +29,8 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | `Landing` | `landing-prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 | `WebService` | `backoffice-frontend-dev`, `backoffice-frontend-prod`, `mbti-web-prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
 | `MbtiCdn` | `mbti-cdn-prod` | 이미지 캐시 정책, CloudFront |
+| `ImageDelivery` | `api`, `backoffice-frontend`, `mbti-web` | ECR 저장소, 라이프사이클 정책, 배포 역할과 정책 |
+| `DbNetwork` | `db-network` | RDS 서브넷 그룹 |
 
 ## 환경
 

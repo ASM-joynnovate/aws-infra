@@ -6,17 +6,19 @@ import pulumi_aws as aws
 from data import (
     CORS_ORIGINS,
     ROOT_DOMAIN,
+    DbNetwork,
+    DbNetworkArgs,
     app_secret,
     data_bucket,
     database,
     db_readonly_secret,
-    db_subnet_group,
 )
 from deploy import (
-    api_deploy_role,
-    backoffice_frontend_deploy_role,
-    ecr_repository,
-    mbti_web_deploy_role,
+    API_DEPLOY_SUBS,
+    BACKOFFICE_FRONTEND_DEPLOY_SUBS,
+    MBTI_WEB_DEPLOY_SUBS,
+    ImageDelivery,
+    ImageDeliveryArgs,
     rotation_redeploy,
 )
 from dns import cname_record
@@ -74,32 +76,50 @@ buckets = {
     for env in ("dev", "prod", "local")
 }
 
-repository = ecr_repository(API_PREFIX, logical_name="api")
-backoffice_frontend_repository = ecr_repository(
-    BACKOFFICE_FRONTEND_PREFIX, logical_name="backoffice-frontend"
-)
-mbti_web_repository = ecr_repository(MBTI_WEB_PREFIX, logical_name="mbti-web")
-
-deploy = api_deploy_role(
-    name=f"{API_PREFIX}-deploy",
-    account_id=account_id,
-    region=region,
-    repository_arn=repository.arn,
-    cluster_arn=cluster_arn,
-    cluster_name=ECS_CLUSTER_NAME,
-    prefix=API_PREFIX,
+api_delivery = ImageDelivery(
+    "api",
+    ImageDeliveryArgs(
+        repository_name=API_PREFIX,
+        role_name=f"{API_PREFIX}-deploy",
+        subs=API_DEPLOY_SUBS,
+        account_id=account_id,
+        region=region,
+        cluster_name=ECS_CLUSTER_NAME,
+        prefix=API_PREFIX,
+        migration_cluster_arn=cluster_arn,
+    ),
 )
 
-mbti_web_deploy = mbti_web_deploy_role(
-    name=f"{MBTI_WEB_PREFIX}-deploy",
-    account_id=account_id,
-    region=region,
-    repository_arn=mbti_web_repository.arn,
-    cluster_name=ECS_CLUSTER_NAME,
-    prefix=MBTI_WEB_PREFIX,
+backoffice_frontend_delivery = ImageDelivery(
+    "backoffice-frontend",
+    ImageDeliveryArgs(
+        repository_name=BACKOFFICE_FRONTEND_PREFIX,
+        role_name=f"{BACKOFFICE_FRONTEND_PREFIX}-deploy",
+        subs=BACKOFFICE_FRONTEND_DEPLOY_SUBS,
+        account_id=account_id,
+        region=region,
+        cluster_name=ECS_CLUSTER_NAME,
+        prefix=BACKOFFICE_FRONTEND_PREFIX,
+    ),
 )
 
-subnet_group = db_subnet_group(API_PREFIX, private_subnet_ids)
+mbti_web_delivery = ImageDelivery(
+    "mbti-web",
+    ImageDeliveryArgs(
+        repository_name=MBTI_WEB_PREFIX,
+        role_name=f"{MBTI_WEB_PREFIX}-deploy",
+        subs=MBTI_WEB_DEPLOY_SUBS,
+        account_id=account_id,
+        region=region,
+        cluster_name=ECS_CLUSTER_NAME,
+        prefix=MBTI_WEB_PREFIX,
+    ),
+)
+
+db_network = DbNetwork(
+    "db-network",
+    DbNetworkArgs(subnet_group_name=API_PREFIX, subnet_ids=private_subnet_ids),
+)
 
 for env, api_settings in API_ENVIRONMENTS.items():
     name = f"{API_PREFIX}-{env}"
@@ -107,7 +127,7 @@ for env, api_settings in API_ENVIRONMENTS.items():
     db = database(
         env,
         name=name,
-        subnet_group_name=subnet_group.name,
+        subnet_group_name=db_network.subnet_group.name,
         security_group_id=db_security_group_id,
     )
 
@@ -130,7 +150,7 @@ for env, api_settings in API_ENVIRONMENTS.items():
     api = api_service(
         env,
         name=name,
-        image=repository.repository_url.apply(
+        image=api_delivery.repository.repository_url.apply(
             lambda url: f"{url}:{BOOTSTRAP_IMAGE_TAG}"
         ),
         region=region,
@@ -162,7 +182,8 @@ for env, api_settings in API_ENVIRONMENTS.items():
             service_name=f"{BACKOFFICE_FRONTEND_PREFIX}-{env}",
             target_group_name=f"jn-buddybird-bo-fe-{env}",
             image=pulumi.Output.concat(
-                backoffice_frontend_repository.repository_url, f":{env}-bootstrap"
+                backoffice_frontend_delivery.repository.repository_url,
+                f":{env}-bootstrap",
             ),
             region=region,
             hostname=backoffice_frontend_settings["hostname"],
@@ -197,7 +218,7 @@ for env, mbti_web_settings in MBTI_WEB_ENVIRONMENTS.items():
             service_name=f"{MBTI_WEB_PREFIX}-{env}",
             target_group_name=f"{MBTI_WEB_PREFIX}-{env}",
             image=pulumi.Output.concat(
-                mbti_web_repository.repository_url, f":{env}-bootstrap"
+                mbti_web_delivery.repository.repository_url, f":{env}-bootstrap"
             ),
             region=region,
             hostname=mbti_web_settings["hostname"],
@@ -210,15 +231,6 @@ for env, mbti_web_settings in MBTI_WEB_ENVIRONMENTS.items():
             listener_arn=https_listener_arn,
         ),
     )
-
-backoffice_frontend_deploy = backoffice_frontend_deploy_role(
-    name=f"{BACKOFFICE_FRONTEND_PREFIX}-deploy",
-    account_id=account_id,
-    region=region,
-    repository_arn=backoffice_frontend_repository.arn,
-    cluster_name=ECS_CLUSTER_NAME,
-    prefix=BACKOFFICE_FRONTEND_PREFIX,
-)
 
 landing = Landing(
     "landing-prod",
@@ -242,18 +254,20 @@ cname_record(
 pulumi.export("data_dev_bucket_name", buckets["dev"].id)
 pulumi.export("data_prod_bucket_name", buckets["prod"].id)
 pulumi.export("data_local_bucket_name", buckets["local"].id)
-pulumi.export("api_repository_url", repository.repository_url)
+pulumi.export("api_repository_url", api_delivery.repository.repository_url)
 pulumi.export(
     "backoffice_frontend_repository_url",
-    backoffice_frontend_repository.repository_url,
+    backoffice_frontend_delivery.repository.repository_url,
 )
-pulumi.export("mbti_web_repository_url", mbti_web_repository.repository_url)
-pulumi.export("api_deploy_role_arn", deploy.arn)
+pulumi.export("mbti_web_repository_url", mbti_web_delivery.repository.repository_url)
+pulumi.export("api_deploy_role_arn", api_delivery.deploy_role.arn)
 pulumi.export("landing_bucket_name", landing.bucket.id)
 pulumi.export("landing_distribution_id", landing.distribution.id)
 pulumi.export("landing_distribution_domain", landing.distribution.domain_name)
-pulumi.export("backoffice_frontend_deploy_role_arn", backoffice_frontend_deploy.arn)
-pulumi.export("mbti_web_deploy_role_arn", mbti_web_deploy.arn)
+pulumi.export(
+    "backoffice_frontend_deploy_role_arn", backoffice_frontend_delivery.deploy_role.arn
+)
+pulumi.export("mbti_web_deploy_role_arn", mbti_web_delivery.deploy_role.arn)
 pulumi.export("landing_deploy_role_arn", landing.deploy_role.arn)
 
 pulumi.export("mbti_web_distribution_id", mbti_cdn.distribution.id)

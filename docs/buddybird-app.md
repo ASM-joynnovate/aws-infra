@@ -29,19 +29,47 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 
 | 컴포넌트 | 이름 | 리소스 |
 |---|---|---|
-| `Api` | `api-dev`, `api-prod` | 앱 시크릿, 실행 역할과 task 역할, 로그 그룹, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, rotation 재배포 Lambda, dev의 DNS |
-| `DataBucket` | `api-dev-data`, `api-prod-data`, `api-dev-local-data` | 데이터 버킷과 하드닝, 버저닝, 라이프사이클, TLS 전용 정책, CORS |
-| `Database` | `api-dev-database`, `api-prod-database` | RDS 인스턴스, readonly 시크릿 |
-| `Landing` | `landing-prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
-| `WebService` | `backoffice-frontend-dev`, `backoffice-frontend-prod`, `mbti-web-prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
-| `MbtiCdn` | `mbti-cdn-prod` | 이미지 캐시 정책, CloudFront |
+컴포넌트 이름에는 스택 이름이 붙습니다.
+
+| 컴포넌트 | 이름 | 스택 | 리소스 |
+|---|---|---|---|
+| `Api` | `api-<스택>` | `dev`, `prod` | 앱 시크릿, 실행 역할과 task 역할, 로그 그룹, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, rotation 재배포 Lambda, 랜딩이 없는 스택의 DNS |
+| `DataBucket` | `api-<스택>-data` | `dev`, `prod` | 데이터 버킷과 하드닝, 버저닝, 라이프사이클, TLS 전용 정책, CORS |
+| `DataBucket` | `api-dev-local-data` | `dev` | 로컬 개발용 데이터 버킷 |
+| `Database` | `api-<스택>-database` | `dev`, `prod` | RDS 인스턴스, readonly 시크릿 |
+| `WebService` | `backoffice-frontend-<스택>` | `dev`, `prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
+| `WebService` | `mbti-web-prod` | `prod` | backoffice frontend와 같음 |
+| `MbtiCdn` | `mbti-cdn-prod` | `prod` | 이미지 캐시 정책, CloudFront |
+| `Landing` | `landing-prod` | `prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 
 ## 환경
 
-| 환경 | api 호스트명 | backoffice frontend 호스트명 | mbti web 호스트명 |
-|---|---|---|---|
-| prod | `buddybird.xyz` | `backoffice.buddybird.xyz` | `mbti.buddybird.xyz` |
-| dev | `dev.buddybird.xyz` | `dev-backoffice.buddybird.xyz` | - |
+환경마다 스택을 둡니다.
+스택 이름이 환경 이름이고 코드는 `pulumi.get_stack()`으로 환경을 읽습니다.
+
+| 스택 | api 호스트명 | backoffice frontend 호스트명 | mbti web 호스트명 | 랜딩 |
+|---|---|---|---|---|
+| `prod` | `buddybird.xyz` | `backoffice.buddybird.xyz` | `mbti.buddybird.xyz` | O |
+| `dev` | `dev.buddybird.xyz` | `dev-backoffice.buddybird.xyz` | X | X |
+
+### 스택 config
+
+스택마다 다른 값은 `Pulumi.<스택>.yaml`에 둡니다.
+도메인과 이름 접두사는 Python 상수입니다.
+
+| 키 | 값 | 필수 |
+|---|---|---|
+| `api` | `subdomain`, `priority`. `subdomain`이 없으면 루트 도메인 | O |
+| `backofficeFrontend` | `subdomain`, `priority` | O |
+| `mbtiWeb` | `subdomain`, `priority`. 키가 있는 스택에만 mbti web과 MBTI CloudFront 생성 | X |
+| `landing` | `true`인 스택에만 랜딩 생성 | X |
+| `localDataBucket` | `true`인 스택에 로컬 개발용 데이터 버킷 생성 | X |
+| `dbDeletionProtection` | `true`이면 RDS 삭제 보호와 최종 스냅샷 사용 | X |
+| `mbtiCdnEnabled` | `true`이면 mbti DNS를 MBTI CloudFront로 연결 | X |
+
+데이터 버킷의 CORS origin은 api와 backoffice frontend의 호스트명에서 계산합니다.
+api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
+랜딩이 있는 스택에서는 랜딩 CloudFront가 루트 도메인을 소유하고 `/api/*`를 ALB로 전달합니다.
 
 ## 이름 규칙
 
@@ -414,24 +442,27 @@ pulumi up --stack prod
 
 ## 리스너 규칙 우선순위
 
-| 우선순위 | 호스트명 | 경로 |
-|---|---|---|
-| 10 | `buddybird.xyz` | `/api/*` |
-| 20 | `dev.buddybird.xyz` | `/api/*` |
-| 30 | `backoffice.buddybird.xyz` | 전체 |
-| 40 | `dev-backoffice.buddybird.xyz` | 전체 |
-| 50 | `mbti.buddybird.xyz` | 전체 |
+두 스택이 `infra`의 HTTPS 리스너 하나를 함께 사용합니다.
+우선순위는 리스너 안에서 고유해야 하므로 스택 config에 값을 추가할 때 이 표에서 겹치지 않는 값을 고릅니다.
+
+| 우선순위 | 스택 | 호스트명 | 경로 |
+|---|---|---|---|
+| 10 | `prod` | `buddybird.xyz` | `/api/*` |
+| 20 | `dev` | `dev.buddybird.xyz` | `/api/*` |
+| 30 | `prod` | `backoffice.buddybird.xyz` | 전체 |
+| 40 | `dev` | `dev-backoffice.buddybird.xyz` | 전체 |
+| 50 | `prod` | `mbti.buddybird.xyz` | 전체 |
 
 ## DNS
 
-| 호스트명 | 대상 | TTL | proxied |
-|---|---|---|---|
-| `buddybird.xyz` | CloudFront | 300초 | 비활성 |
-| `www.buddybird.xyz` | CloudFront | 300초 | 비활성 |
-| `dev.buddybird.xyz` | ALB | 300초 | 비활성 |
-| `backoffice.buddybird.xyz` | ALB | 300초 | 비활성 |
-| `dev-backoffice.buddybird.xyz` | ALB | 300초 | 비활성 |
-| `mbti.buddybird.xyz` | `mbtiCdnEnabled=true`: MBTI CloudFront, 기본값: ALB | 300초 | 비활성 |
+| 호스트명 | 스택 | 소유 컴포넌트 | 대상 | TTL | proxied |
+|---|---|---|---|---|---|
+| `buddybird.xyz` | `prod` | `Landing` | CloudFront | 300초 | 비활성 |
+| `www.buddybird.xyz` | `prod` | `Landing` | CloudFront | 300초 | 비활성 |
+| `dev.buddybird.xyz` | `dev` | `Api` | ALB | 300초 | 비활성 |
+| `backoffice.buddybird.xyz` | `prod` | `WebService` | ALB | 300초 | 비활성 |
+| `dev-backoffice.buddybird.xyz` | `dev` | `WebService` | ALB | 300초 | 비활성 |
+| `mbti.buddybird.xyz` | `prod` | `WebService` | `mbtiCdnEnabled=true`: MBTI CloudFront, 기본값: ALB | 300초 | 비활성 |
 
 ## 배포
 
@@ -473,15 +504,18 @@ aws ecs update-service --cluster jn-cluster --service <서비스> \
 
 ### 수동 단계
 
-첫 적용 전에 스택 secret을 저장합니다.
+첫 적용 전에 스택마다 secret을 저장합니다.
 
 ```bash
-pulumi config set --secret cloudflare:apiToken <토큰>
-pulumi config set --secret authAccessTokenKey "$(openssl rand -base64 32)"
-pulumi config set --secret authRefreshTokenKey "$(openssl rand -base64 32)"
-pulumi config set --secret backofficePassword <비밀번호>
-pulumi config set --secret readonlyDbPassword <비밀번호>
+pulumi config set --stack <스택> --secret cloudflare:apiToken <토큰>
+pulumi config set --stack <스택> --secret authAccessTokenKey "$(openssl rand -base64 32)"
+pulumi config set --stack <스택> --secret authRefreshTokenKey "$(openssl rand -base64 32)"
+pulumi config set --stack <스택> --secret backofficePassword <비밀번호>
+pulumi config set --stack <스택> --secret readonlyDbPassword <비밀번호>
 ```
+
+`cloudflare:apiToken`을 제외한 값은 스택마다 다르게 설정합니다.
+현재 `dev` 스택은 `prod` 스택에서 복사한 값을 사용하고 있어 교체가 필요합니다.
 
 ### readonly DB 사용자 생성
 

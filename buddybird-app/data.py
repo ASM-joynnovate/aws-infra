@@ -15,11 +15,7 @@ from moved import from_root
 DATA_BUCKET_PREFIX = "jn-buddybird-v1"
 ROOT_DOMAIN = "buddybird.xyz"
 
-CORS_ORIGINS = {
-    "local": ["http://localhost:3000"],
-    "dev": [f"https://dev.{ROOT_DOMAIN}", f"https://dev-backoffice.{ROOT_DOMAIN}"],
-    "prod": [f"https://{ROOT_DOMAIN}", f"https://backoffice.{ROOT_DOMAIN}"],
-}
+LOCAL_CORS_ORIGINS = ["http://localhost:3000"]
 
 DB_ENGINE_VERSION = "17"
 DB_STORAGE_GB = 20

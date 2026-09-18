@@ -2,13 +2,21 @@ name: buddybird-app up
 
 on:
   workflow_dispatch:
+    inputs:
+      stack:
+        description: 적용할 스택
+        type: choice
+        required: true
+        options:
+          - dev
+          - prod
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: pulumi-buddybird-app-prod
+  group: pulumi-buddybird-app-${{ inputs.stack }}
   cancel-in-progress: false
 
 jobs:
@@ -16,6 +24,6 @@ jobs:
     uses: ./.github/workflows/_pulumi-up.yml
     with:
       work-dir: buddybird-app
-      stack-name: organization/buddybird-app/prod
+      stack-name: organization/buddybird-app/${{ inputs.stack }}
       iam-role-suffix: pulumi
       environment: prod

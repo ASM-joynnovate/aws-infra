@@ -13,13 +13,17 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: pulumi-buddybird-app-prod
+  group: pulumi-buddybird-app
   cancel-in-progress: false
 
 jobs:
   preview:
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [dev, prod]
     uses: ./.github/workflows/_pulumi-preview.yml
     with:
       work-dir: buddybird-app
-      stack-name: organization/buddybird-app/prod
+      stack-name: organization/buddybird-app/${{ matrix.stack }}
       iam-role-suffix: preview

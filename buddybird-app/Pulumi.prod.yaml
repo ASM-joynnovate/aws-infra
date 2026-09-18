@@ -18,3 +18,13 @@ config:
     secure: v1:29d0cdcOqvN4DS2w:/ARXp+E8kGSKcDZmEqQFM6/4pUYhAbRmoN28SGFPrQ==
   buddybird-app:readonlyDbPassword:
     secure: v1:WVn+xDi0fXhVQZVQ:neMvedfcJaOrSIgKQxMqTHmjKNJlG6NlNSPywdGAQw==
+  buddybird-app:api:
+    priority: 10
+  buddybird-app:backofficeFrontend:
+    subdomain: backoffice
+    priority: 30
+  buddybird-app:mbtiWeb:
+    subdomain: mbti
+    priority: 50
+  buddybird-app:landing: "true"
+  buddybird-app:dbDeletionProtection: "true"

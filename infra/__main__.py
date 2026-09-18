@@ -199,7 +199,6 @@ pulumi.export("public_subnet_ids", [subnet.id for subnet in network.public_subne
 pulumi.export("private_subnet_ids", [subnet.id for subnet in network.private_subnets])
 pulumi.export("task_security_group_id", network.task_security_group.id)
 pulumi.export("db_security_group_id", network.db_security_group.id)
-pulumi.export("cache_security_group_id", network.cache_security_group.id)
 pulumi.export("ssm_instance_id", ssm_instance.id)
 pulumi.export("cluster_arn", serving.cluster.arn)
 pulumi.export("alb_dns_name", serving.alb.dns_name)

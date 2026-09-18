@@ -41,7 +41,6 @@
 | `jn-alb` | 인터넷 → 80, 443 | 전체 |
 | `jn-task` | `jn-alb` → 전체 | 전체 |
 | `jn-db` | - `jn-task` → 5432<br>- `jn-ssm` → 5432 | 전체 |
-| `jn-cache` | `jn-task` → 6379, 6380 | 전체 |
 | `jn-ssm` | X | 전체 |
 | 기본 SG | 모든 규칙 제거, `do-not-use` 표시 | 모든 규칙 제거 |
 
@@ -114,7 +113,6 @@
 | `private_subnet_ids` | RDS 서브넷 그룹 |
 | `task_security_group_id` | ECS 서비스 네트워크 설정 |
 | `db_security_group_id` | RDS 인스턴스 |
-| `cache_security_group_id` | X |
 | `ssm_instance_id` | SSM port forwarding 대상 |
 | `cluster_arn` | ECS 서비스, 배포 역할 권한 범위 |
 | `alb_dns_name` | CNAME, CloudFront API 오리진 |

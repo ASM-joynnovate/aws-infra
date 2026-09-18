@@ -14,7 +14,9 @@ CACHE_PORTS = [6379, 6380]
 
 
 class Network(pulumi.ComponentResource):
-    def __init__(self, name, region, log_bucket, log_prefix, log_bucket_policy, opts=None):
+    def __init__(
+        self, name, region, log_bucket, log_prefix, log_bucket_policy, opts=None
+    ):
         super().__init__("joynnovate:infra:Network", name, None, opts)
         child = pulumi.ResourceOptions(parent=self)
         azs = aws.get_availability_zones(state="available").names[:2]
@@ -59,7 +61,13 @@ class Network(pulumi.ComponentResource):
             name, azs, PUBLIC_SUBNET_CIDRS, "public", public_route_table, True, child
         )
         self.private_subnets = self._subnets(
-            name, azs, PRIVATE_SUBNET_CIDRS, "private", private_route_table, False, child
+            name,
+            azs,
+            PRIVATE_SUBNET_CIDRS,
+            "private",
+            private_route_table,
+            False,
+            child,
         )
 
         aws.ec2.VpcEndpoint(
@@ -79,7 +87,9 @@ class Network(pulumi.ComponentResource):
             vpc_id=self.vpc.id,
             traffic_type="ALL",
             log_destination_type="s3",
-            log_destination=pulumi.Output.format("{0}/{1}/", log_bucket.arn, log_prefix),
+            log_destination=pulumi.Output.format(
+                "{0}/{1}/", log_bucket.arn, log_prefix
+            ),
             tags={"Name": f"{name}-flow-log"},
             opts=pulumi.ResourceOptions(parent=self, depends_on=[log_bucket_policy]),
         )

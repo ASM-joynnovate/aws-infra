@@ -66,9 +66,15 @@ def distribution(
         code=REWRITE_FUNCTION,
     )
 
-    caching_optimized = aws.cloudfront.get_cache_policy_output(name="Managed-CachingOptimized")
-    caching_disabled = aws.cloudfront.get_cache_policy_output(name="Managed-CachingDisabled")
-    all_viewer = aws.cloudfront.get_origin_request_policy_output(name="Managed-AllViewer")
+    caching_optimized = aws.cloudfront.get_cache_policy_output(
+        name="Managed-CachingOptimized"
+    )
+    caching_disabled = aws.cloudfront.get_cache_policy_output(
+        name="Managed-CachingDisabled"
+    )
+    all_viewer = aws.cloudfront.get_origin_request_policy_output(
+        name="Managed-AllViewer"
+    )
 
     cdn = aws.cloudfront.Distribution(
         "site",
@@ -232,10 +238,18 @@ def mbti_web_distribution(
             enable_accept_encoding_gzip=False,
         ),
     )
-    caching_optimized = aws.cloudfront.get_cache_policy_output(name="Managed-CachingOptimized")
-    caching_disabled = aws.cloudfront.get_cache_policy_output(name="Managed-CachingDisabled")
-    all_viewer = aws.cloudfront.get_origin_request_policy_output(name="Managed-AllViewer")
-    host_only = aws.cloudfront.get_origin_request_policy_output(name="Managed-HostHeaderOnly")
+    caching_optimized = aws.cloudfront.get_cache_policy_output(
+        name="Managed-CachingOptimized"
+    )
+    caching_disabled = aws.cloudfront.get_cache_policy_output(
+        name="Managed-CachingDisabled"
+    )
+    all_viewer = aws.cloudfront.get_origin_request_policy_output(
+        name="Managed-AllViewer"
+    )
+    host_only = aws.cloudfront.get_origin_request_policy_output(
+        name="Managed-HostHeaderOnly"
+    )
 
     return aws.cloudfront.Distribution(
         "mbti-web",
@@ -258,7 +272,15 @@ def mbti_web_distribution(
         default_cache_behavior=aws.cloudfront.DistributionDefaultCacheBehaviorArgs(
             target_origin_id="mbti-web",
             viewer_protocol_policy="redirect-to-https",
-            allowed_methods=["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+            allowed_methods=[
+                "GET",
+                "HEAD",
+                "OPTIONS",
+                "PUT",
+                "POST",
+                "PATCH",
+                "DELETE",
+            ],
             cached_methods=["GET", "HEAD"],
             compress=True,
             cache_policy_id=caching_disabled.id,

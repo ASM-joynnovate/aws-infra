@@ -166,9 +166,7 @@ def _fargate_service(
 
     conditions = [
         aws.lb.ListenerRuleConditionArgs(
-            host_header=aws.lb.ListenerRuleConditionHostHeaderArgs(
-                values=[hostname]
-            )
+            host_header=aws.lb.ListenerRuleConditionHostHeaderArgs(values=[hostname])
         ),
     ]
     if path_pattern:
@@ -215,9 +213,7 @@ def _fargate_service(
                 container_port=port,
             )
         ],
-        opts=pulumi.ResourceOptions(
-            ignore_changes=["taskDefinition", "desiredCount"]
-        ),
+        opts=pulumi.ResourceOptions(ignore_changes=["taskDefinition", "desiredCount"]),
     )
 
 
@@ -254,63 +250,65 @@ def api_service(
         db_secret=db_secret_arn,
         app_secret=secret.arn,
     ).apply(
-        lambda a: json.dumps([
-            {
-                "name": "api",
-                "image": a["image"],
-                "essential": True,
-                "portMappings": [
-                    {"containerPort": API_CONTAINER_PORT, "protocol": "tcp"}
-                ],
-                "environment": [
-                    {"name": "BUDDYBIRD_ENV", "value": env},
-                    {"name": "DB_HOST", "value": a["db_host"]},
-                    {"name": "DB_NAME", "value": a["db_name"]},
-                    {"name": "DB_USER", "value": a["db_user"]},
-                    {"name": "S3_BUCKET_NAME", "value": a["bucket_name"]},
-                    {
-                        "name": "S3_BUCKET_DOMAIN",
-                        "value": f"https://{a['bucket_name']}.s3.{region}.amazonaws.com",
+        lambda a: json.dumps(
+            [
+                {
+                    "name": "api",
+                    "image": a["image"],
+                    "essential": True,
+                    "portMappings": [
+                        {"containerPort": API_CONTAINER_PORT, "protocol": "tcp"}
+                    ],
+                    "environment": [
+                        {"name": "BUDDYBIRD_ENV", "value": env},
+                        {"name": "DB_HOST", "value": a["db_host"]},
+                        {"name": "DB_NAME", "value": a["db_name"]},
+                        {"name": "DB_USER", "value": a["db_user"]},
+                        {"name": "S3_BUCKET_NAME", "value": a["bucket_name"]},
+                        {
+                            "name": "S3_BUCKET_DOMAIN",
+                            "value": f"https://{a['bucket_name']}.s3.{region}.amazonaws.com",
+                        },
+                        {"name": "AUTH_ALGORITHM", "value": AUTH_ALGORITHM},
+                        {
+                            "name": "AUTH_ACCESS_TOKEN_EXPIRE_MINUTES",
+                            "value": str(AUTH_ACCESS_TOKEN_EXPIRE_MINUTES),
+                        },
+                        {
+                            "name": "AUTH_REFRESH_TOKEN_EXPIRE_MINUTES",
+                            "value": str(AUTH_REFRESH_TOKEN_EXPIRE_MINUTES),
+                        },
+                        {"name": "FRONTEND_CORS_ORIGIN", "value": cors_origin},
+                    ],
+                    "secrets": [
+                        {
+                            "name": "DB_PASSWORD",
+                            "valueFrom": f"{a['db_secret']}:password::",
+                        },
+                        {
+                            "name": "AUTH_ACCESS_TOKEN_SECRET_KEY",
+                            "valueFrom": f"{a['app_secret']}:access_token_key::",
+                        },
+                        {
+                            "name": "AUTH_REFRESH_TOKEN_SECRET_KEY",
+                            "valueFrom": f"{a['app_secret']}:refresh_token_key::",
+                        },
+                        {
+                            "name": "BACKOFFICE_PASSWORD",
+                            "valueFrom": f"{a['app_secret']}:backoffice_password::",
+                        },
+                    ],
+                    "logConfiguration": {
+                        "logDriver": "awslogs",
+                        "options": {
+                            "awslogs-group": a["log_group"],
+                            "awslogs-region": region,
+                            "awslogs-stream-prefix": "api",
+                        },
                     },
-                    {"name": "AUTH_ALGORITHM", "value": AUTH_ALGORITHM},
-                    {
-                        "name": "AUTH_ACCESS_TOKEN_EXPIRE_MINUTES",
-                        "value": str(AUTH_ACCESS_TOKEN_EXPIRE_MINUTES),
-                    },
-                    {
-                        "name": "AUTH_REFRESH_TOKEN_EXPIRE_MINUTES",
-                        "value": str(AUTH_REFRESH_TOKEN_EXPIRE_MINUTES),
-                    },
-                    {"name": "FRONTEND_CORS_ORIGIN", "value": cors_origin},
-                ],
-                "secrets": [
-                    {
-                        "name": "DB_PASSWORD",
-                        "valueFrom": f"{a['db_secret']}:password::",
-                    },
-                    {
-                        "name": "AUTH_ACCESS_TOKEN_SECRET_KEY",
-                        "valueFrom": f"{a['app_secret']}:access_token_key::",
-                    },
-                    {
-                        "name": "AUTH_REFRESH_TOKEN_SECRET_KEY",
-                        "valueFrom": f"{a['app_secret']}:refresh_token_key::",
-                    },
-                    {
-                        "name": "BACKOFFICE_PASSWORD",
-                        "valueFrom": f"{a['app_secret']}:backoffice_password::",
-                    },
-                ],
-                "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {
-                        "awslogs-group": a["log_group"],
-                        "awslogs-region": region,
-                        "awslogs-stream-prefix": "api",
-                    },
-                },
-            }
-        ])
+                }
+            ]
+        )
     )
 
     return _fargate_service(
@@ -353,24 +351,26 @@ def backoffice_frontend_service(
     execution = _execution_role(f"backoffice-frontend-exec-{env}", name)
 
     container = pulumi.Output.all(image=image, log_group=log_group.name).apply(
-        lambda a: json.dumps([
-            {
-                "name": "backoffice-frontend",
-                "image": a["image"],
-                "essential": True,
-                "portMappings": [
-                    {"containerPort": BACKOFFICE_FRONTEND_PORT, "protocol": "tcp"}
-                ],
-                "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {
-                        "awslogs-group": a["log_group"],
-                        "awslogs-region": region,
-                        "awslogs-stream-prefix": "backoffice-frontend",
+        lambda a: json.dumps(
+            [
+                {
+                    "name": "backoffice-frontend",
+                    "image": a["image"],
+                    "essential": True,
+                    "portMappings": [
+                        {"containerPort": BACKOFFICE_FRONTEND_PORT, "protocol": "tcp"}
+                    ],
+                    "logConfiguration": {
+                        "logDriver": "awslogs",
+                        "options": {
+                            "awslogs-group": a["log_group"],
+                            "awslogs-region": region,
+                            "awslogs-stream-prefix": "backoffice-frontend",
+                        },
                     },
-                },
-            }
-        ])
+                }
+            ]
+        )
     )
 
     return _fargate_service(
@@ -410,24 +410,26 @@ def mbti_web_service(
     execution = _execution_role(f"mbti-web-exec-{env}", name)
 
     container = pulumi.Output.all(image=image, log_group=log_group.name).apply(
-        lambda a: json.dumps([
-            {
-                "name": "mbti-web",
-                "image": a["image"],
-                "essential": True,
-                "portMappings": [
-                    {"containerPort": MBTI_WEB_PORT, "protocol": "tcp"}
-                ],
-                "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {
-                        "awslogs-group": a["log_group"],
-                        "awslogs-region": region,
-                        "awslogs-stream-prefix": "mbti-web",
+        lambda a: json.dumps(
+            [
+                {
+                    "name": "mbti-web",
+                    "image": a["image"],
+                    "essential": True,
+                    "portMappings": [
+                        {"containerPort": MBTI_WEB_PORT, "protocol": "tcp"}
+                    ],
+                    "logConfiguration": {
+                        "logDriver": "awslogs",
+                        "options": {
+                            "awslogs-group": a["log_group"],
+                            "awslogs-region": region,
+                            "awslogs-stream-prefix": "mbti-web",
+                        },
                     },
-                },
-            }
-        ])
+                }
+            ]
+        )
     )
 
     return _fargate_service(

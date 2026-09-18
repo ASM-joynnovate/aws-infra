@@ -21,8 +21,8 @@ from deploy import (
     mbti_web_deploy_role,
     rotation_redeploy,
 )
-from service import api_service, backoffice_frontend_service, mbti_web_service
 from edge import distribution, mbti_web_distribution, site_bucket
+from service import api_service, backoffice_frontend_service, mbti_web_service
 
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
@@ -138,9 +138,7 @@ for env, api_settings in API_ENVIRONMENTS.items():
         listener_arn=infra.get_output("https_listener_arn"),
         hostname=api_settings["hostname"],
         priority=api_settings["priority"],
-        cors_origin=json.dumps(
-            [f"https://{backoffice_frontend_settings['hostname']}"]
-        ),
+        cors_origin=json.dumps([f"https://{backoffice_frontend_settings['hostname']}"]),
     )
 
     rotation_redeploy(
@@ -227,7 +225,11 @@ for label, hostname, target in (
     ("dev", f"dev.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
     ("mbti", f"mbti.{ROOT_DOMAIN}", mbti_dns_target),
     ("backoffice", f"backoffice.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
-    ("dev-backoffice", f"dev-backoffice.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
+    (
+        "dev-backoffice",
+        f"dev-backoffice.{ROOT_DOMAIN}",
+        infra.get_output("alb_dns_name"),
+    ),
 ):
     cloudflare.DnsRecord(
         label,

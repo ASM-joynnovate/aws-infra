@@ -3,27 +3,16 @@ import json
 import pulumi
 import pulumi_aws as aws
 
-from data import (
-    CORS_ORIGINS,
-    ROOT_DOMAIN,
-    DbNetwork,
-    DbNetworkArgs,
-    app_secret,
-    data_bucket,
-    database,
-    db_readonly_secret,
-)
+from data import CORS_ORIGINS, ROOT_DOMAIN, DbNetwork, DbNetworkArgs
 from deploy import (
     API_DEPLOY_SUBS,
     BACKOFFICE_FRONTEND_DEPLOY_SUBS,
     MBTI_WEB_DEPLOY_SUBS,
     ImageDelivery,
     ImageDeliveryArgs,
-    rotation_redeploy,
 )
-from dns import cname_record
 from edge import Landing, LandingArgs, MbtiCdn, MbtiCdnArgs
-from service import WebService, WebServiceArgs, api_service
+from service import Api, ApiArgs, WebService, WebServiceArgs
 
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
@@ -65,16 +54,6 @@ alb_dns_name = infra.require_output("alb_dns_name")
 https_listener_arn = infra.require_output("https_listener_arn")
 cloudfront_certificate_arn = infra.require_output("cloudfront_certificate_arn")
 
-
-buckets = {
-    env: data_bucket(
-        env,
-        account_id=account_id,
-        region=region,
-        cors_allowed_origins=CORS_ORIGINS[env],
-    )
-    for env in ("dev", "prod", "local")
-}
 
 api_delivery = ImageDelivery(
     "api",
@@ -121,58 +100,42 @@ db_network = DbNetwork(
     DbNetworkArgs(subnet_group_name=API_PREFIX, subnet_ids=private_subnet_ids),
 )
 
+apis = {}
 for env, api_settings in API_ENVIRONMENTS.items():
-    name = f"{API_PREFIX}-{env}"
-
-    db = database(
-        env,
-        name=name,
-        subnet_group_name=db_network.subnet_group.name,
-        security_group_id=db_security_group_id,
-    )
-
-    secret = app_secret(
-        env,
-        name=name,
-        access_token_key=config.require_secret("authAccessTokenKey"),
-        refresh_token_key=config.require_secret("authRefreshTokenKey"),
-        backoffice_password=config.require_secret("backofficePassword"),
-    )
-
-    db_readonly_secret(
-        env,
-        name=f"{name}-readonly",
-        password=config.require_secret("readonlyDbPassword"),
-    )
-
+    is_dev = env == "dev"
     backoffice_frontend_settings = BACKOFFICE_FRONTEND_ENVIRONMENTS[env]
 
-    api = api_service(
-        env,
-        name=name,
-        image=api_delivery.repository.repository_url.apply(
-            lambda url: f"{url}:{BOOTSTRAP_IMAGE_TAG}"
+    apis[env] = Api(
+        f"api-{env}",
+        ApiArgs(
+            env=env,
+            service_name=f"{API_PREFIX}-{env}",
+            account_id=account_id,
+            region=region,
+            image=api_delivery.repository.repository_url.apply(
+                lambda url: f"{url}:{BOOTSTRAP_IMAGE_TAG}"
+            ),
+            hostname=api_settings["hostname"],
+            priority=api_settings["priority"],
+            cors_origin=json.dumps(
+                [f"https://{backoffice_frontend_settings['hostname']}"]
+            ),
+            data_cors_origins=CORS_ORIGINS[env],
+            deletion_protection=env == "prod",
+            subnet_group_name=db_network.subnet_group.name,
+            db_security_group_id=db_security_group_id,
+            access_token_key=config.require_secret("authAccessTokenKey"),
+            refresh_token_key=config.require_secret("authRefreshTokenKey"),
+            backoffice_password=config.require_secret("backofficePassword"),
+            readonly_db_password=config.require_secret("readonlyDbPassword"),
+            vpc_id=vpc_id,
+            subnet_ids=public_subnet_ids,
+            task_security_group_id=task_security_group_id,
+            cluster_arn=cluster_arn,
+            listener_arn=https_listener_arn,
+            dns_target=alb_dns_name if is_dev else None,
+            local_data_cors_origins=CORS_ORIGINS["local"] if is_dev else None,
         ),
-        region=region,
-        bucket=buckets[env],
-        database=db,
-        secret=secret,
-        vpc_id=vpc_id,
-        subnet_ids=public_subnet_ids,
-        task_security_group_id=task_security_group_id,
-        cluster_arn=cluster_arn,
-        listener_arn=https_listener_arn,
-        hostname=api_settings["hostname"],
-        priority=api_settings["priority"],
-        cors_origin=json.dumps([f"https://{backoffice_frontend_settings['hostname']}"]),
-    )
-
-    rotation_redeploy(
-        env,
-        name=name,
-        secret_arn=db.master_user_secrets[0].secret_arn,
-        cluster_arn=cluster_arn,
-        service=api,
     )
 
     WebService(
@@ -244,16 +207,9 @@ landing = Landing(
     ),
 )
 
-cname_record(
-    "dev",
-    hostname=API_ENVIRONMENTS["dev"]["hostname"],
-    target=alb_dns_name,
-    opts=pulumi.ResourceOptions(),
-)
-
-pulumi.export("data_dev_bucket_name", buckets["dev"].id)
-pulumi.export("data_prod_bucket_name", buckets["prod"].id)
-pulumi.export("data_local_bucket_name", buckets["local"].id)
+pulumi.export("data_dev_bucket_name", apis["dev"].data.bucket.id)
+pulumi.export("data_prod_bucket_name", apis["prod"].data.bucket.id)
+pulumi.export("data_local_bucket_name", apis["dev"].local_data.bucket.id)
 pulumi.export("api_repository_url", api_delivery.repository.repository_url)
 pulumi.export(
     "backoffice_frontend_repository_url",

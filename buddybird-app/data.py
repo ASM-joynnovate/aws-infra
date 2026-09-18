@@ -183,7 +183,7 @@ def database(
         skip_final_snapshot=not is_prod,
         final_snapshot_identifier=f"{name}-final" if is_prod else None,
         deletion_protection=is_prod,
-        opts=pulumi.ResourceOptions(protect=is_prod),
+        opts=pulumi.ResourceOptions(protect=True),
     )
 
 

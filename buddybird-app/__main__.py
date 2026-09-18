@@ -17,21 +17,18 @@ from deploy import (
     api_deploy_role,
     backoffice_frontend_deploy_role,
     ecr_repository,
-    landing_fe_deploy_role,
     mbti_web_deploy_role,
     rotation_redeploy,
 )
-from edge import distribution, mbti_web_distribution, site_bucket
+from dns import CLOUDFLARE_ZONE_ID, DNS_RECORD_TTL
+from edge import Landing, LandingArgs, mbti_web_distribution
 from service import api_service, backoffice_frontend_service, mbti_web_service
 
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
-LANDING_FE_PREFIX = "jn-buddybird-site"
+LANDING_PREFIX = "jn-buddybird-site"
 MBTI_WEB_PREFIX = "jn-buddybird-mbti"
 ECS_CLUSTER_NAME = "jn-cluster"
-
-CLOUDFLARE_ZONE_ID = "fa5a1e637498dd11b4bf43211181f9e8"
-DNS_RECORD_TTL = 300
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"
 
@@ -202,13 +199,16 @@ backoffice_frontend_deploy = backoffice_frontend_deploy_role(
     prefix=BACKOFFICE_FRONTEND_PREFIX,
 )
 
-site = site_bucket(f"{LANDING_FE_PREFIX}-{account_id}-{region}")
-
-cdn = distribution(
-    bucket=site,
-    alb_dns_name=alb_dns_name,
-    certificate_arn=cloudfront_certificate_arn,
-    aliases=[ROOT_DOMAIN, f"www.{ROOT_DOMAIN}"],
+landing = Landing(
+    "landing-prod",
+    LandingArgs(
+        account_id=account_id,
+        root_domain=ROOT_DOMAIN,
+        bucket_name=f"{LANDING_PREFIX}-{account_id}-{region}",
+        deploy_role_name=f"{LANDING_PREFIX}-deploy",
+        alb_dns_name=alb_dns_name,
+        certificate_arn=cloudfront_certificate_arn,
+    ),
 )
 
 mbti_cdn = mbti_web_distribution(
@@ -220,16 +220,7 @@ mbti_cdn = mbti_web_distribution(
 mbti_cdn_enabled = config.get_bool("mbtiCdnEnabled") or False
 mbti_dns_target = mbti_cdn.domain_name if mbti_cdn_enabled else alb_dns_name
 
-landing_fe_deploy = landing_fe_deploy_role(
-    name=f"{LANDING_FE_PREFIX}-deploy",
-    account_id=account_id,
-    bucket_arn=site.arn,
-    distribution_arn=cdn.arn,
-)
-
 for label, hostname, target in (
-    ("root", ROOT_DOMAIN, cdn.domain_name),
-    ("www", f"www.{ROOT_DOMAIN}", cdn.domain_name),
     ("dev", f"dev.{ROOT_DOMAIN}", alb_dns_name),
     ("mbti", f"mbti.{ROOT_DOMAIN}", mbti_dns_target),
     ("backoffice", f"backoffice.{ROOT_DOMAIN}", alb_dns_name),
@@ -260,12 +251,12 @@ pulumi.export(
 )
 pulumi.export("mbti_web_repository_url", mbti_web_repository.repository_url)
 pulumi.export("api_deploy_role_arn", deploy.arn)
-pulumi.export("landing_bucket_name", site.id)
-pulumi.export("landing_distribution_id", cdn.id)
-pulumi.export("landing_distribution_domain", cdn.domain_name)
+pulumi.export("landing_bucket_name", landing.bucket.id)
+pulumi.export("landing_distribution_id", landing.distribution.id)
+pulumi.export("landing_distribution_domain", landing.distribution.domain_name)
 pulumi.export("backoffice_frontend_deploy_role_arn", backoffice_frontend_deploy.arn)
 pulumi.export("mbti_web_deploy_role_arn", mbti_web_deploy.arn)
-pulumi.export("landing_deploy_role_arn", landing_fe_deploy.arn)
+pulumi.export("landing_deploy_role_arn", landing.deploy_role.arn)
 
 pulumi.export("mbti_web_distribution_id", mbti_cdn.id)
 pulumi.export("mbti_web_distribution_domain", mbti_cdn.domain_name)

@@ -9,8 +9,7 @@ from pulumi_aws.iam import (
     PolicyStatementEffect,
 )
 
-OIDC_HOST = "token.actions.githubusercontent.com"
-OIDC_AUDIENCE = "sts.amazonaws.com"
+from oidc import trust_policy
 
 API_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-api@1262535317"
 API_DEPLOY_SUBS = [
@@ -18,9 +17,6 @@ API_DEPLOY_SUBS = [
     f"{API_SUB_PREFIX}:ref:refs/heads/dev",
     f"{API_SUB_PREFIX}:environment:prod",
 ]
-
-LANDING_FE_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-landing@1275213976"
-LANDING_FE_DEPLOY_SUBS = [f"{LANDING_FE_SUB_PREFIX}:ref:refs/heads/main"]
 
 BO_FE_SUB_PREFIX = (
     "repo:ASM-joynnovate@279207361/buddybird-backoffice-frontend@1342074306"
@@ -35,8 +31,6 @@ MBTI_WEB_DEPLOY_SUBS = [
     f"{MBTI_WEB_SUB_PREFIX}:ref:refs/heads/main",
     f"{MBTI_WEB_SUB_PREFIX}:environment:prod",
 ]
-
-LANDING_FE_SYNC_ACTIONS = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
 
 ECR_PUSH_ACTIONS = [
     "ecr:BatchCheckLayerAvailability",
@@ -113,36 +107,6 @@ def ecr_repository(name: str, logical_name: str) -> aws.ecr.Repository:
     )
 
     return repository
-
-
-def _trust_policy(account_id: str, subs: list[str]) -> pulumi.Output[str]:
-    provider_arn = f"arn:aws:iam::{account_id}:oidc-provider/{OIDC_HOST}"
-    return aws.iam.get_policy_document_output(
-        statements=[
-            GetPolicyDocumentStatementArgs(
-                effect=PolicyStatementEffect.ALLOW,
-                actions=["sts:AssumeRoleWithWebIdentity"],
-                principals=[
-                    GetPolicyDocumentStatementPrincipalArgs(
-                        type="Federated",
-                        identifiers=[provider_arn],
-                    )
-                ],
-                conditions=[
-                    GetPolicyDocumentStatementConditionArgs(
-                        test="StringEquals",
-                        variable=f"{OIDC_HOST}:aud",
-                        values=[OIDC_AUDIENCE],
-                    ),
-                    GetPolicyDocumentStatementConditionArgs(
-                        test="StringEquals",
-                        variable=f"{OIDC_HOST}:sub",
-                        values=subs,
-                    ),
-                ],
-            )
-        ]
-    ).json
 
 
 def _api_deploy_policy(
@@ -244,7 +208,7 @@ def api_deploy_role(
         "api-deploy",
         name=name,
         description="buddybird-api GitHub Actions image push and ECS service update",
-        assume_role_policy=_trust_policy(account_id, API_DEPLOY_SUBS),
+        assume_role_policy=trust_policy(account_id, API_DEPLOY_SUBS),
     )
 
     aws.iam.RolePolicy(
@@ -325,7 +289,7 @@ def backoffice_frontend_deploy_role(
         "bo-fe-deploy",
         name=name,
         description="buddybird-backoffice-frontend GitHub Actions image push and ECS service update",
-        assume_role_policy=_trust_policy(account_id, BO_FE_DEPLOY_SUBS),
+        assume_role_policy=trust_policy(account_id, BO_FE_DEPLOY_SUBS),
     )
 
     aws.iam.RolePolicy(
@@ -406,7 +370,7 @@ def mbti_web_deploy_role(
         "mbti-web-deploy",
         name=name,
         description="buddybird-mbti-web GitHub Actions image push and ECS service update",
-        assume_role_policy=_trust_policy(account_id, MBTI_WEB_DEPLOY_SUBS),
+        assume_role_policy=trust_policy(account_id, MBTI_WEB_DEPLOY_SUBS),
     )
 
     aws.iam.RolePolicy(
@@ -508,47 +472,3 @@ def rotation_redeploy(
         rule=rule.name,
         arn=function.arn,
     )
-
-
-def landing_fe_deploy_role(
-    *,
-    name: str,
-    account_id: str,
-    bucket_arn: pulumi.Input[str],
-    distribution_arn: pulumi.Input[str],
-) -> aws.iam.Role:
-    role = aws.iam.Role(
-        "landing-fe-deploy",
-        name=name,
-        description="buddybird-landing GitHub Actions S3 sync and CloudFront invalidation",
-        assume_role_policy=_trust_policy(account_id, LANDING_FE_DEPLOY_SUBS),
-    )
-
-    aws.iam.RolePolicy(
-        "landing-fe-deploy",
-        role=role.name,
-        policy=aws.iam.get_policy_document_output(
-            statements=[
-                GetPolicyDocumentStatementArgs(
-                    sid="ListSiteBucket",
-                    effect=PolicyStatementEffect.ALLOW,
-                    actions=["s3:ListBucket"],
-                    resources=[bucket_arn],
-                ),
-                GetPolicyDocumentStatementArgs(
-                    sid="SyncSiteObjects",
-                    effect=PolicyStatementEffect.ALLOW,
-                    actions=LANDING_FE_SYNC_ACTIONS,
-                    resources=[pulumi.Output.format("{0}/*", bucket_arn)],
-                ),
-                GetPolicyDocumentStatementArgs(
-                    sid="InvalidateCache",
-                    effect=PolicyStatementEffect.ALLOW,
-                    actions=["cloudfront:CreateInvalidation"],
-                    resources=[distribution_arn],
-                ),
-            ]
-        ).json,
-    )
-
-    return role

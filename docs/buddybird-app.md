@@ -19,7 +19,6 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `edge.py` | `Landing`, `MbtiCdn` 컴포넌트 |
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
 | `dns.py` | Cloudflare CNAME 레코드 |
-| `moved.py` | 컴포넌트 이전에 사용하는 aliases 헬퍼, 이전 완료 후 삭제 |
 
 ## 리소스 구성
 

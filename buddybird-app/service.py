@@ -18,7 +18,6 @@ from data import (
     DataBucketArgs,
 )
 from dns import cname_record
-from moved import from_root
 
 API_CONTAINER_PORT = 8000
 WEB_SERVICE_PORT = 3000
@@ -247,19 +246,17 @@ class WebService(pulumi.ComponentResource):
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("joynnovate:buddybird:WebService", name, None, opts)
-        previous_exec_name = "-exec-".join(name.rsplit("-", 1))
-        previous_dns_name = args.hostname.split(".")[0]
 
         logs = log_group(
             name,
             log_group_name=f"/ecs/{args.service_name}",
-            opts=from_root(self, name),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         execution = execution_role(
             name,
             role_name=f"{args.service_name}-exec",
-            opts=from_root(self, previous_exec_name),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         container = pulumi.Output.all(image=args.image, log_group=logs.name).apply(
@@ -300,14 +297,14 @@ class WebService(pulumi.ComponentResource):
             listener_arn=args.listener_arn,
             hostname=args.hostname,
             priority=args.priority,
-            opts=from_root(self, name),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         cname_record(
             f"{name}-dns",
             hostname=args.hostname,
             target=args.dns_target,
-            opts=from_root(self, previous_dns_name),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.register_outputs({"service": self.service})
@@ -356,7 +353,6 @@ class Api(pulumi.ComponentResource):
             DataBucketArgs(
                 bucket_name=self._data_bucket_name(env, args),
                 cors_allowed_origins=args.data_cors_origins,
-                previous_name=f"data-{env}",
             ),
             child,
         )
@@ -368,7 +364,6 @@ class Api(pulumi.ComponentResource):
                 DataBucketArgs(
                     bucket_name=self._data_bucket_name("local", args),
                     cors_allowed_origins=args.local_data_cors_origins,
-                    previous_name="data-local",
                 ),
                 child,
             )
@@ -393,7 +388,7 @@ class Api(pulumi.ComponentResource):
             name=args.service_name,
             description=f"buddybird-api {env} token signing keys",
             recovery_window_in_days=0,
-            opts=from_root(self, f"app-{env}"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.secretsmanager.SecretVersion(
@@ -406,19 +401,19 @@ class Api(pulumi.ComponentResource):
                     "backoffice_password": args.backoffice_password,
                 }
             ),
-            opts=from_root(self, f"app-{env}"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         logs = log_group(
             name,
             log_group_name=f"/ecs/{args.service_name}",
-            opts=from_root(self, name),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         execution = execution_role(
             name,
             role_name=f"{args.service_name}-exec",
-            opts=from_root(self, f"exec-{env}"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.iam.RolePolicy(
@@ -433,7 +428,7 @@ class Api(pulumi.ComponentResource):
                     )
                 ]
             ).json,
-            opts=from_root(self, f"exec-{env}-secrets"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         task = aws.iam.Role(
@@ -441,7 +436,7 @@ class Api(pulumi.ComponentResource):
             name=f"{args.service_name}-task",
             assume_role_policy=_assume_role_policy(),
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, f"task-{env}"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -463,7 +458,7 @@ class Api(pulumi.ComponentResource):
                     ),
                 ]
             ).json,
-            opts=from_root(self, f"task-{env}-s3"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         container = pulumi.Output.all(
@@ -554,7 +549,7 @@ class Api(pulumi.ComponentResource):
             hostname=args.hostname,
             priority=args.priority,
             path_pattern=API_PATH_PATTERN,
-            opts=from_root(self, name),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self._rotation_redeploy(name, args, db_secret_arn)
@@ -564,7 +559,7 @@ class Api(pulumi.ComponentResource):
                 f"{name}-dns",
                 hostname=args.hostname,
                 target=args.dns_target,
-                opts=from_root(self, args.hostname.split(".")[0]),
+                opts=pulumi.ResourceOptions(parent=self),
             )
 
         self.register_outputs(
@@ -583,9 +578,9 @@ class Api(pulumi.ComponentResource):
     def _rotation_redeploy(
         self, name: str, args: ApiArgs, secret_arn: pulumi.Input[str]
     ) -> None:
-        previous = from_root(self, f"rotation-{args.env}")
+        child = pulumi.ResourceOptions(parent=self)
         replaceable = pulumi.ResourceOptions.merge(
-            previous, pulumi.ResourceOptions(delete_before_replace=True)
+            child, pulumi.ResourceOptions(delete_before_replace=True)
         )
         rotation_name = f"{args.service_name}-rotation"
 
@@ -613,7 +608,7 @@ class Api(pulumi.ComponentResource):
             f"{name}-rotation-role-logs",
             role=role.name,
             policy_arn=aws.iam.ManagedPolicy.AWS_LAMBDA_BASIC_EXECUTION_ROLE,
-            opts=previous,
+            opts=child,
         )
 
         aws.iam.RolePolicy(
@@ -628,7 +623,7 @@ class Api(pulumi.ComponentResource):
                     )
                 ]
             ).json,
-            opts=previous,
+            opts=child,
         )
 
         function = aws.lambda_.Function(
@@ -667,12 +662,12 @@ class Api(pulumi.ComponentResource):
             function=function.name,
             principal="events.amazonaws.com",
             source_arn=rule.arn,
-            opts=previous,
+            opts=child,
         )
 
         aws.cloudwatch.EventTarget(
             f"{name}-rotation-target",
             rule=rule.name,
             arn=function.arn,
-            opts=previous,
+            opts=child,
         )

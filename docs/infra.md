@@ -12,7 +12,6 @@
 | `serving.py` | `Serving` 컴포넌트 |
 | `bastion.py` | `Bastion` 컴포넌트 |
 | `cost.py` | `Cost` 컴포넌트 |
-| `moved.py` | 컴포넌트 이전에 사용하는 aliases 헬퍼, 이전 완료 후 삭제 |
 
 ## 리소스 구성
 

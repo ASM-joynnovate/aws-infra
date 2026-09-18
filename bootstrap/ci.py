@@ -9,8 +9,6 @@ from pulumi_aws.iam import (
     PolicyStatementEffect,
 )
 
-from moved import renamed
-
 OIDC_HOST = "token.actions.githubusercontent.com"
 OIDC_URL = f"https://{OIDC_HOST}"
 OIDC_AUDIENCE = "sts.amazonaws.com"
@@ -191,7 +189,7 @@ class CiRoles(pulumi.ComponentResource):
             f"{name}-github-oidc-provider",
             url=OIDC_URL,
             client_id_lists=[OIDC_AUDIENCE],
-            opts=renamed(self, "github"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.preview_role = aws.iam.Role(
@@ -200,7 +198,7 @@ class CiRoles(pulumi.ComponentResource):
             description="Read-only role for pulumi preview on pull requests",
             assume_role_policy=_trust_policy(provider.arn, PREVIEW_SUB),
             opts=pulumi.ResourceOptions.merge(
-                renamed(self, "ci-preview"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -209,14 +207,14 @@ class CiRoles(pulumi.ComponentResource):
             f"{name}-preview-role-read-only",
             role=self.preview_role.name,
             policy_arn=aws.iam.ManagedPolicy.READ_ONLY_ACCESS,
-            opts=renamed(self, "ci-preview-read-only"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.iam.RolePolicy(
             f"{name}-preview-role-state",
             role=self.preview_role.name,
             policy=_preview_policy(args.state_bucket_arn, args.secrets_key_arn),
-            opts=renamed(self, "ci-preview-state"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.pulumi_role = aws.iam.Role(
@@ -225,7 +223,7 @@ class CiRoles(pulumi.ComponentResource):
             description="Role for pulumi up after prod environment approval",
             assume_role_policy=_trust_policy(provider.arn, PULUMI_SUB),
             opts=pulumi.ResourceOptions.merge(
-                renamed(self, "ci-pulumi"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -234,7 +232,7 @@ class CiRoles(pulumi.ComponentResource):
             f"{name}-pulumi-role-power-user",
             role=self.pulumi_role.name,
             policy_arn=aws.iam.ManagedPolicy.POWER_USER_ACCESS,
-            opts=renamed(self, "ci-pulumi-power-user"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.iam.RolePolicy(
@@ -243,7 +241,7 @@ class CiRoles(pulumi.ComponentResource):
             policy=_pulumi_policy(
                 args.account_id, args.state_bucket_arn, args.secrets_key_arn
             ),
-            opts=renamed(self, "ci-pulumi-iam"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.register_outputs(

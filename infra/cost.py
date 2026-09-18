@@ -4,10 +4,8 @@ from dataclasses import dataclass
 import pulumi
 import pulumi_aws as aws
 
-from moved import from_root
 
-
-@dataclass
+@dataclass(frozen=True)
 class CostArgs:
     budget_name: str
     limit_usd: int
@@ -42,7 +40,7 @@ class Cost(pulumi.ComponentResource):
                 for percent in args.alert_percents
             ],
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, "monthly"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )

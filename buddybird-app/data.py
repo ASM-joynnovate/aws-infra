@@ -10,8 +10,6 @@ from pulumi_aws.iam import (
     PolicyStatementEffect,
 )
 
-from moved import from_root
-
 DATA_BUCKET_PREFIX = "jn-buddybird-v1"
 ROOT_DOMAIN = "buddybird.xyz"
 
@@ -64,7 +62,6 @@ def harden_bucket(
 class DataBucketArgs:
     bucket_name: str
     cors_allowed_origins: Sequence[str]
-    previous_name: str
 
 
 class DataBucket(pulumi.ComponentResource):
@@ -75,18 +72,17 @@ class DataBucket(pulumi.ComponentResource):
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("joynnovate:buddybird:DataBucket", name, None, opts)
-        previous = args.previous_name
 
         self.bucket = aws.s3.Bucket(
             f"{name}-bucket",
             bucket=args.bucket_name,
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, previous),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(protect=True),
             ),
         )
 
-        harden_bucket(name, self.bucket, from_root(self, previous))
+        harden_bucket(name, self.bucket, pulumi.ResourceOptions(parent=self))
 
         aws.s3.BucketVersioning(
             f"{name}-versioning",
@@ -94,7 +90,7 @@ class DataBucket(pulumi.ComponentResource):
             versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
                 status="Enabled"
             ),
-            opts=from_root(self, previous),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketLifecycleConfiguration(
@@ -118,7 +114,7 @@ class DataBucket(pulumi.ComponentResource):
                     ),
                 ),
             ],
-            opts=from_root(self, previous),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketPolicy(
@@ -150,7 +146,7 @@ class DataBucket(pulumi.ComponentResource):
                     )
                 ]
             ).json,
-            opts=from_root(self, f"{previous}-tls-only"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.s3.BucketCorsConfiguration(
@@ -164,7 +160,7 @@ class DataBucket(pulumi.ComponentResource):
                     expose_headers=["Content-Length", "Content-Type"],
                 )
             ],
-            opts=from_root(self, previous),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.register_outputs({"bucket": self.bucket})
@@ -213,7 +209,7 @@ class Database(pulumi.ComponentResource):
             ),
             deletion_protection=args.deletion_protection,
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, f"db-{args.env}"),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(protect=True),
             ),
         )
@@ -223,7 +219,7 @@ class Database(pulumi.ComponentResource):
             name=args.readonly_secret_name,
             description=f"buddybird-api {args.env} read-only database user",
             recovery_window_in_days=0,
-            opts=from_root(self, f"db-readonly-{args.env}"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         aws.secretsmanager.SecretVersion(
@@ -232,7 +228,7 @@ class Database(pulumi.ComponentResource):
             secret_string=pulumi.Output.json_dumps(
                 {"password": args.readonly_password}
             ),
-            opts=from_root(self, f"db-readonly-{args.env}"),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         self.register_outputs(

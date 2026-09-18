@@ -3,12 +3,8 @@ from dataclasses import dataclass
 import pulumi
 import pulumi_aws as aws
 
-from moved import from_root
 
-PREVIOUS_NAME = "ssm"
-
-
-@dataclass
+@dataclass(frozen=True)
 class BastionArgs:
     instance_name: str
     subnet_id: pulumi.Input[str]
@@ -50,7 +46,7 @@ class Bastion(pulumi.ComponentResource):
                 ]
             ).json,
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, PREVIOUS_NAME),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -59,7 +55,7 @@ class Bastion(pulumi.ComponentResource):
             f"{name}-role-ssm-core",
             role=role.name,
             policy_arn=aws.iam.ManagedPolicy.AMAZON_SSM_MANAGED_INSTANCE_CORE,
-            opts=from_root(self, PREVIOUS_NAME),
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         profile = aws.iam.InstanceProfile(
@@ -67,7 +63,7 @@ class Bastion(pulumi.ComponentResource):
             name=args.instance_name,
             role=role.name,
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, PREVIOUS_NAME),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -85,7 +81,7 @@ class Bastion(pulumi.ComponentResource):
             ),
             tags={"Name": args.instance_name},
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, PREVIOUS_NAME),
+                pulumi.ResourceOptions(parent=self),
                 pulumi.ResourceOptions(ignore_changes=["ami"]),
             ),
         )

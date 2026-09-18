@@ -6,10 +6,26 @@
 
 | 파일 | 역할 |
 |---|---|
-| `__main__.py` | 로그 버킷, 비용 한도 알림, 컴포넌트 조립, 출력값 |
+| `__main__.py` | 상수, 컴포넌트 조립, 출력값 |
+| `logs.py` | `Logging` 컴포넌트 |
 | `network.py` | `Network` 컴포넌트 |
 | `serving.py` | `Serving` 컴포넌트 |
-| `ssm.py` | SSM bastion EC2 인스턴스 |
+| `bastion.py` | `Bastion` 컴포넌트 |
+| `cost.py` | `Cost` 컴포넌트 |
+| `moved.py` | 컴포넌트 이전에 사용하는 aliases 헬퍼, 이전 완료 후 삭제 |
+
+## 리소스 구성
+
+모든 리소스는 컴포넌트 아래에 있습니다.
+컴포넌트는 `(name, args, opts)` 생성자와 `@dataclass` Args를 사용하고 자식 논리 이름에 컴포넌트 이름을 접두어로 붙입니다.
+
+| 컴포넌트 | 이름 | 리소스 |
+|---|---|---|
+| `Logging` | `jn-logging` | 로그 버킷, 암호화, public access block, 라이프사이클, 버킷 정책 |
+| `Network` | `jn` | VPC, 서브넷, 라우팅, S3 엔드포인트, 보안 그룹, Flow Log |
+| `Serving` | `jn` | ECS 클러스터, ACM 인증서, ALB, 리스너 |
+| `Bastion` | `jn-bastion` | EC2, IAM 역할, 인스턴스 프로파일 |
+| `Cost` | `jn-cost` | 월 예산 |
 
 ## VPC
 

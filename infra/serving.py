@@ -1,96 +1,118 @@
+from collections.abc import Sequence
+from dataclasses import dataclass
+
 import pulumi
 import pulumi_aws as aws
 import pulumi_cloudflare as cloudflare
+
+from moved import renamed
 
 CLOUDFRONT_CERTIFICATE_REGION = "us-east-1"
 ALB_TLS_POLICY = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 ACM_VALIDATION_RECORD_TTL = 60
 
 
+@dataclass
+class ServingArgs:
+    domain: str
+    zone_id: pulumi.Input[str]
+    subnet_ids: Sequence[pulumi.Input[str]]
+    alb_security_group_id: pulumi.Input[str]
+    log_bucket_name: pulumi.Input[str]
+    log_prefix: str
+    log_bucket_policy: aws.s3.BucketPolicy
+
+
 class Serving(pulumi.ComponentResource):
     def __init__(
         self,
-        name,
-        domain,
-        zone_id,
-        subnets,
-        alb_security_group,
-        log_bucket,
-        log_prefix,
-        log_bucket_policy,
-        opts=None,
-    ):
+        name: str,
+        args: ServingArgs,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
         super().__init__("joynnovate:infra:Serving", name, None, opts)
-        child = pulumi.ResourceOptions(parent=self)
 
-        self.cluster = aws.ecs.Cluster("main", name=f"{name}-cluster", opts=child)
+        self.cluster = aws.ecs.Cluster(
+            f"{name}-cluster",
+            name=f"{name}-cluster",
+            opts=renamed(self, "main"),
+        )
 
         us_east_1 = aws.Provider(
             "us-east-1",
             region=CLOUDFRONT_CERTIFICATE_REGION,
-            opts=child,
+            opts=pulumi.ResourceOptions(parent=self),
         )
 
         alb_certificate = aws.acm.Certificate(
-            "alb",
-            domain_name=domain,
-            subject_alternative_names=[f"*.{domain}"],
+            f"{name}-alb-certificate",
+            domain_name=args.domain,
+            subject_alternative_names=[f"*.{args.domain}"],
             validation_method="DNS",
-            opts=child,
+            opts=renamed(self, "alb"),
         )
 
         self.cloudfront_certificate = aws.acm.Certificate(
-            "cloudfront",
-            domain_name=domain,
-            subject_alternative_names=[f"*.{domain}"],
+            f"{name}-cloudfront-certificate",
+            domain_name=args.domain,
+            subject_alternative_names=[f"*.{args.domain}"],
             validation_method="DNS",
-            opts=pulumi.ResourceOptions(parent=self, provider=us_east_1),
+            opts=pulumi.ResourceOptions.merge(
+                renamed(self, "cloudfront"),
+                pulumi.ResourceOptions(provider=us_east_1),
+            ),
         )
 
         option = alb_certificate.domain_validation_options[0]
         validation_record = cloudflare.DnsRecord(
-            "acm-validation",
-            zone_id=zone_id,
+            f"{name}-acm-validation",
+            zone_id=args.zone_id,
             name=option.resource_record_name.apply(lambda value: value.rstrip(".")),
             type=option.resource_record_type,
             content=option.resource_record_value.apply(lambda value: value.rstrip(".")),
             ttl=ACM_VALIDATION_RECORD_TTL,
             proxied=False,
             comment="ACM domain validation",
-            opts=child,
+            opts=renamed(self, "acm-validation"),
         )
         validation_fqdns = [validation_record.name]
 
         alb_certificate_validation = aws.acm.CertificateValidation(
-            "alb",
+            f"{name}-alb-certificate-validation",
             certificate_arn=alb_certificate.arn,
             validation_record_fqdns=validation_fqdns,
-            opts=child,
+            opts=renamed(self, "alb"),
         )
 
         aws.acm.CertificateValidation(
-            "cloudfront",
+            f"{name}-cloudfront-certificate-validation",
             certificate_arn=self.cloudfront_certificate.arn,
             validation_record_fqdns=validation_fqdns,
-            opts=pulumi.ResourceOptions(parent=self, provider=us_east_1),
+            opts=pulumi.ResourceOptions.merge(
+                renamed(self, "cloudfront"),
+                pulumi.ResourceOptions(provider=us_east_1),
+            ),
         )
 
         self.alb = aws.lb.LoadBalancer(
-            "main",
+            f"{name}-alb",
             name=f"{name}-alb",
             load_balancer_type="application",
-            subnets=[subnet.id for subnet in subnets],
-            security_groups=[alb_security_group.id],
+            subnets=list(args.subnet_ids),
+            security_groups=[args.alb_security_group_id],
             access_logs=aws.lb.LoadBalancerAccessLogsArgs(
-                bucket=log_bucket.bucket,
-                prefix=log_prefix,
+                bucket=args.log_bucket_name,
+                prefix=args.log_prefix,
                 enabled=True,
             ),
-            opts=pulumi.ResourceOptions(parent=self, depends_on=[log_bucket_policy]),
+            opts=pulumi.ResourceOptions.merge(
+                renamed(self, "main"),
+                pulumi.ResourceOptions(depends_on=[args.log_bucket_policy]),
+            ),
         )
 
         self.https_listener = aws.lb.Listener(
-            "https",
+            f"{name}-https-listener",
             load_balancer_arn=self.alb.arn,
             port=443,
             protocol="HTTPS",
@@ -106,11 +128,11 @@ class Serving(pulumi.ComponentResource):
                     ),
                 )
             ],
-            opts=child,
+            opts=renamed(self, "https"),
         )
 
         aws.lb.Listener(
-            "http",
+            f"{name}-http-listener",
             load_balancer_arn=self.alb.arn,
             port=80,
             protocol="HTTP",
@@ -124,7 +146,7 @@ class Serving(pulumi.ComponentResource):
                     ),
                 )
             ],
-            opts=child,
+            opts=renamed(self, "http"),
         )
 
         self.register_outputs(

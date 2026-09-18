@@ -101,7 +101,8 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 | 백업 보존      | 7일 |
 | password       | `manage_master_user_password` |
 | subnet         | private, 서브넷 그룹 환경 공유 |
-| prod 삭제 보호 | `protect=True`, `deletion_protection` |
+| Pulumi 삭제 보호 | dev와 prod 모두 `protect=True` |
+| RDS 삭제 보호 | prod만 `deletion_protection` |
 
 ### 비밀번호 rotation 재배포
 

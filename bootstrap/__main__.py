@@ -29,7 +29,7 @@ versioning = aws.s3.BucketVersioning(
     bucket=state.id,
     versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
         status="Enabled"
-    )
+    ),
 )
 
 aws.s3.BucketServerSideEncryptionConfiguration(
@@ -41,7 +41,7 @@ aws.s3.BucketServerSideEncryptionConfiguration(
                 sse_algorithm="AES256"
             )
         )
-    ]
+    ],
 )
 
 aws.s3.BucketPublicAccessBlock(
@@ -50,15 +50,13 @@ aws.s3.BucketPublicAccessBlock(
     block_public_acls=True,
     block_public_policy=True,
     ignore_public_acls=True,
-    restrict_public_buckets=True
+    restrict_public_buckets=True,
 )
 
 aws.s3.BucketOwnershipControls(
     "state",
     bucket=state.id,
-    rule=aws.s3.BucketOwnershipControlsRuleArgs(
-        object_ownership="BucketOwnerEnforced"
-    )
+    rule=aws.s3.BucketOwnershipControlsRuleArgs(object_ownership="BucketOwnerEnforced"),
 )
 
 aws.s3.BucketLifecycleConfiguration(
@@ -82,7 +80,7 @@ aws.s3.BucketLifecycleConfiguration(
             ),
         ),
     ],
-    opts=pulumi.ResourceOptions(depends_on=[versioning])
+    opts=pulumi.ResourceOptions(depends_on=[versioning]),
 )
 
 aws.s3.BucketPolicy(

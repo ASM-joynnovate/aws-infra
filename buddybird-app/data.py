@@ -100,7 +100,7 @@ def data_bucket(
                     noncurrent_days=30
                 ),
             ),
-        ]
+        ],
     )
 
     aws.s3.BucketPolicy(

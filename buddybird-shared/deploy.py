@@ -10,7 +10,6 @@ from pulumi_aws.iam import (
     PolicyStatementEffect,
 )
 
-from moved import from_root
 from oidc import trust_policy
 
 API_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-api@1262535317"
@@ -47,8 +46,6 @@ ECR_PUSH_ACTIONS = [
 
 ECR_UNTAGGED_EXPIRE_DAYS = 7
 ECR_IMAGE_LIMIT = 20
-
-PREVIOUS_DEPLOY_NAMES = {"backoffice-frontend": "bo-fe-deploy"}
 
 
 @dataclass(frozen=True)
@@ -174,7 +171,7 @@ class ImageDelivery(pulumi.ComponentResource):
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("joynnovate:buddybird:ImageDelivery", name, None, opts)
-        previous_deploy_name = PREVIOUS_DEPLOY_NAMES.get(name, f"{name}-deploy")
+        child = pulumi.ResourceOptions(parent=self)
 
         self.repository = aws.ecr.Repository(
             f"{name}-repository",
@@ -183,7 +180,7 @@ class ImageDelivery(pulumi.ComponentResource):
             image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
                 scan_on_push=True
             ),
-            opts=from_root(self, name),
+            opts=child,
         )
 
         aws.ecr.LifecyclePolicy(
@@ -220,7 +217,7 @@ class ImageDelivery(pulumi.ComponentResource):
                     ]
                 }
             ),
-            opts=from_root(self, name),
+            opts=child,
         )
 
         self.deploy_role = aws.iam.Role(
@@ -229,7 +226,7 @@ class ImageDelivery(pulumi.ComponentResource):
             description=f"buddybird-{name} GitHub Actions image push and ECS service update",
             assume_role_policy=trust_policy(args.account_id, list(args.subs)),
             opts=pulumi.ResourceOptions.merge(
-                from_root(self, previous_deploy_name),
+                child,
                 pulumi.ResourceOptions(delete_before_replace=True),
             ),
         )
@@ -238,7 +235,7 @@ class ImageDelivery(pulumi.ComponentResource):
             f"{name}-deploy-policy",
             role=self.deploy_role.name,
             policy=_deploy_policy(args, self.repository.arn),
-            opts=from_root(self, previous_deploy_name),
+            opts=child,
         )
 
         self.register_outputs(

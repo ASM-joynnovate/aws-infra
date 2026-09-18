@@ -1,0 +1,25 @@
+name: buddybird-shared preview
+
+on:
+  pull_request:
+    paths:
+      - buddybird-shared/**
+      - .github/workflows/buddybird-shared-preview.yml
+      - .github/workflows/_pulumi-preview.yml
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: pulumi-buddybird-shared-prod
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    uses: ./.github/workflows/_pulumi-preview.yml
+    with:
+      work-dir: buddybird-shared
+      stack-name: organization/buddybird-shared/prod
+      iam-role-suffix: preview

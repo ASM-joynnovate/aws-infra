@@ -3,14 +3,7 @@ import json
 import pulumi
 import pulumi_aws as aws
 
-from data import CORS_ORIGINS, ROOT_DOMAIN, DbNetwork, DbNetworkArgs
-from deploy import (
-    API_DEPLOY_SUBS,
-    BACKOFFICE_FRONTEND_DEPLOY_SUBS,
-    MBTI_WEB_DEPLOY_SUBS,
-    ImageDelivery,
-    ImageDeliveryArgs,
-)
+from data import CORS_ORIGINS, ROOT_DOMAIN
 from edge import Landing, LandingArgs, MbtiCdn, MbtiCdnArgs
 from service import Api, ApiArgs, WebService, WebServiceArgs
 
@@ -18,7 +11,6 @@ API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
 LANDING_PREFIX = "jn-buddybird-site"
 MBTI_WEB_PREFIX = "jn-buddybird-mbti"
-ECS_CLUSTER_NAME = "jn-cluster"
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"
 
@@ -37,16 +29,17 @@ MBTI_WEB_ENVIRONMENTS = {
 }
 
 INFRA_STACK = "organization/joynnovate-infra/prod"
+SHARED_STACK = "organization/buddybird-shared/prod"
 
 region = aws.get_region().region
 account_id = aws.get_caller_identity().account_id
 
 config = pulumi.Config()
 infra = pulumi.StackReference(INFRA_STACK)
+shared = pulumi.StackReference(SHARED_STACK)
 
 vpc_id = infra.require_output("vpc_id")
 public_subnet_ids = infra.require_output("public_subnet_ids")
-private_subnet_ids = infra.require_output("private_subnet_ids")
 task_security_group_id = infra.require_output("task_security_group_id")
 db_security_group_id = infra.require_output("db_security_group_id")
 cluster_arn = infra.require_output("cluster_arn")
@@ -55,50 +48,12 @@ https_listener_arn = infra.require_output("https_listener_arn")
 cloudfront_certificate_arn = infra.require_output("cloudfront_certificate_arn")
 
 
-api_delivery = ImageDelivery(
-    "api",
-    ImageDeliveryArgs(
-        repository_name=API_PREFIX,
-        role_name=f"{API_PREFIX}-deploy",
-        subs=API_DEPLOY_SUBS,
-        account_id=account_id,
-        region=region,
-        cluster_name=ECS_CLUSTER_NAME,
-        prefix=API_PREFIX,
-        migration_cluster_arn=cluster_arn,
-    ),
+api_repository_url = shared.require_output("api_repository_url")
+backoffice_frontend_repository_url = shared.require_output(
+    "backoffice_frontend_repository_url"
 )
-
-backoffice_frontend_delivery = ImageDelivery(
-    "backoffice-frontend",
-    ImageDeliveryArgs(
-        repository_name=BACKOFFICE_FRONTEND_PREFIX,
-        role_name=f"{BACKOFFICE_FRONTEND_PREFIX}-deploy",
-        subs=BACKOFFICE_FRONTEND_DEPLOY_SUBS,
-        account_id=account_id,
-        region=region,
-        cluster_name=ECS_CLUSTER_NAME,
-        prefix=BACKOFFICE_FRONTEND_PREFIX,
-    ),
-)
-
-mbti_web_delivery = ImageDelivery(
-    "mbti-web",
-    ImageDeliveryArgs(
-        repository_name=MBTI_WEB_PREFIX,
-        role_name=f"{MBTI_WEB_PREFIX}-deploy",
-        subs=MBTI_WEB_DEPLOY_SUBS,
-        account_id=account_id,
-        region=region,
-        cluster_name=ECS_CLUSTER_NAME,
-        prefix=MBTI_WEB_PREFIX,
-    ),
-)
-
-db_network = DbNetwork(
-    "db-network",
-    DbNetworkArgs(subnet_group_name=API_PREFIX, subnet_ids=private_subnet_ids),
-)
+mbti_web_repository_url = shared.require_output("mbti_web_repository_url")
+db_subnet_group_name = shared.require_output("db_subnet_group_name")
 
 apis = {}
 for env, api_settings in API_ENVIRONMENTS.items():
@@ -112,9 +67,7 @@ for env, api_settings in API_ENVIRONMENTS.items():
             service_name=f"{API_PREFIX}-{env}",
             account_id=account_id,
             region=region,
-            image=api_delivery.repository.repository_url.apply(
-                lambda url: f"{url}:{BOOTSTRAP_IMAGE_TAG}"
-            ),
+            image=api_repository_url.apply(lambda url: f"{url}:{BOOTSTRAP_IMAGE_TAG}"),
             hostname=api_settings["hostname"],
             priority=api_settings["priority"],
             cors_origin=json.dumps(
@@ -122,7 +75,7 @@ for env, api_settings in API_ENVIRONMENTS.items():
             ),
             data_cors_origins=CORS_ORIGINS[env],
             deletion_protection=env == "prod",
-            subnet_group_name=db_network.subnet_group.name,
+            subnet_group_name=db_subnet_group_name,
             db_security_group_id=db_security_group_id,
             access_token_key=config.require_secret("authAccessTokenKey"),
             refresh_token_key=config.require_secret("authRefreshTokenKey"),
@@ -145,7 +98,7 @@ for env, api_settings in API_ENVIRONMENTS.items():
             service_name=f"{BACKOFFICE_FRONTEND_PREFIX}-{env}",
             target_group_name=f"jn-buddybird-bo-fe-{env}",
             image=pulumi.Output.concat(
-                backoffice_frontend_delivery.repository.repository_url,
+                backoffice_frontend_repository_url,
                 f":{env}-bootstrap",
             ),
             region=region,
@@ -180,9 +133,7 @@ for env, mbti_web_settings in MBTI_WEB_ENVIRONMENTS.items():
             service="mbti-web",
             service_name=f"{MBTI_WEB_PREFIX}-{env}",
             target_group_name=f"{MBTI_WEB_PREFIX}-{env}",
-            image=pulumi.Output.concat(
-                mbti_web_delivery.repository.repository_url, f":{env}-bootstrap"
-            ),
+            image=pulumi.Output.concat(mbti_web_repository_url, f":{env}-bootstrap"),
             region=region,
             hostname=mbti_web_settings["hostname"],
             priority=mbti_web_settings["priority"],
@@ -210,20 +161,9 @@ landing = Landing(
 pulumi.export("data_dev_bucket_name", apis["dev"].data.bucket.id)
 pulumi.export("data_prod_bucket_name", apis["prod"].data.bucket.id)
 pulumi.export("data_local_bucket_name", apis["dev"].local_data.bucket.id)
-pulumi.export("api_repository_url", api_delivery.repository.repository_url)
-pulumi.export(
-    "backoffice_frontend_repository_url",
-    backoffice_frontend_delivery.repository.repository_url,
-)
-pulumi.export("mbti_web_repository_url", mbti_web_delivery.repository.repository_url)
-pulumi.export("api_deploy_role_arn", api_delivery.deploy_role.arn)
 pulumi.export("landing_bucket_name", landing.bucket.id)
 pulumi.export("landing_distribution_id", landing.distribution.id)
 pulumi.export("landing_distribution_domain", landing.distribution.domain_name)
-pulumi.export(
-    "backoffice_frontend_deploy_role_arn", backoffice_frontend_delivery.deploy_role.arn
-)
-pulumi.export("mbti_web_deploy_role_arn", mbti_web_delivery.deploy_role.arn)
 pulumi.export("landing_deploy_role_arn", landing.deploy_role.arn)
 
 pulumi.export("mbti_web_distribution_id", mbti_cdn.distribution.id)

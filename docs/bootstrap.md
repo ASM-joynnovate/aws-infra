@@ -87,7 +87,7 @@ Pulumi state 버킷, KMS 키, CI 역할 구성
 
 | 항목 | 값 |
 |---|---|
-| 생성 위치 | `buddybird-app` |
+| 생성 위치 | 이미지 배포 역할은 `buddybird-shared`, 랜딩 배포 역할은 `buddybird-app` |
 | 이름 접두사 | `jn-ci-*` 이외 사용 |
 
 ### 신뢰 정책

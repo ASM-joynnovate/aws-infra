@@ -170,6 +170,7 @@ Temporary Items
 # Info: https://www.pulumi.com/docs/
 
 .pulumi/
+.pulumi-backup/
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

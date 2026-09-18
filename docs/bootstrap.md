@@ -6,8 +6,22 @@ Pulumi state 버킷, KMS 키, CI 역할 구성
 
 | 파일 | 역할 |
 |---|---|
-| `__main__.py` | state 버킷, KMS 키, 출력값 |
-| `ci.py` | OIDC provider, CI 역할 |
+| `__main__.py` | 상수, 컴포넌트 조립, 출력값 |
+| `state.py` | `StateBucket` 컴포넌트 |
+| `secrets_key.py` | `SecretsKey` 컴포넌트 |
+| `ci.py` | `CiRoles` 컴포넌트 |
+| `moved.py` | 컴포넌트 이전에 사용하는 aliases 헬퍼, 이전 완료 후 삭제 |
+
+## 리소스 구성
+
+모든 리소스는 컴포넌트 아래에 있습니다.
+컴포넌트는 `(name, args, opts)` 생성자와 `@dataclass` Args를 사용하고 자식 논리 이름에 컴포넌트 이름을 접두어로 붙입니다.
+
+| 컴포넌트 | 이름 | 리소스 |
+|---|---|---|
+| `StateBucket` | `state` | state 버킷, 버저닝, 암호화, public access block, 소유권 설정, 라이프사이클, TLS 전용 정책 |
+| `SecretsKey` | `secrets` | KMS 키, 별칭 |
+| `CiRoles` | `ci` | OIDC provider, CI 역할 2개와 정책 |
 
 ## 생성 리소스
 

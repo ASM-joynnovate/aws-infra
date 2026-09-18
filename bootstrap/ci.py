@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import pulumi
 import pulumi_aws as aws
 from pulumi_aws.iam import (
@@ -6,6 +8,8 @@ from pulumi_aws.iam import (
     GetPolicyDocumentStatementPrincipalArgs,
     PolicyStatementEffect,
 )
+
+from moved import renamed
 
 OIDC_HOST = "token.actions.githubusercontent.com"
 OIDC_URL = f"https://{OIDC_HOST}"
@@ -167,63 +171,79 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
     ).json
 
 
+@dataclass(frozen=True)
+class CiRolesArgs:
+    account_id: str
+    state_bucket_arn: pulumi.Input[str]
+    secrets_key_arn: pulumi.Input[str]
+
+
 class CiRoles(pulumi.ComponentResource):
-    def __init__(self, name, account_id, state_bucket_arn, secrets_key_arn, opts=None):
+    def __init__(
+        self,
+        name: str,
+        args: CiRolesArgs,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
         super().__init__("joynnovate:bootstrap:CiRoles", name, None, opts)
-        child = pulumi.ResourceOptions(
-            parent=self,
-            aliases=[pulumi.Alias(parent=pulumi.ROOT_STACK_RESOURCE)],
-        )
 
         provider = aws.iam.OpenIdConnectProvider(
-            "github",
+            f"{name}-github-oidc-provider",
             url=OIDC_URL,
             client_id_lists=[OIDC_AUDIENCE],
-            opts=child,
+            opts=renamed(self, "github"),
         )
 
         self.preview_role = aws.iam.Role(
-            "ci-preview",
+            f"{name}-preview-role",
             name=PREVIEW_ROLE_NAME,
             description="Read-only role for pulumi preview on pull requests",
             assume_role_policy=_trust_policy(provider.arn, PREVIEW_SUB),
-            opts=child,
+            opts=pulumi.ResourceOptions.merge(
+                renamed(self, "ci-preview"),
+                pulumi.ResourceOptions(delete_before_replace=True),
+            ),
         )
 
         aws.iam.RolePolicyAttachment(
-            "ci-preview-read-only",
+            f"{name}-preview-role-read-only",
             role=self.preview_role.name,
             policy_arn=aws.iam.ManagedPolicy.READ_ONLY_ACCESS,
-            opts=child,
+            opts=renamed(self, "ci-preview-read-only"),
         )
 
         aws.iam.RolePolicy(
-            "ci-preview-state",
+            f"{name}-preview-role-state",
             role=self.preview_role.name,
-            policy=_preview_policy(state_bucket_arn, secrets_key_arn),
-            opts=child,
+            policy=_preview_policy(args.state_bucket_arn, args.secrets_key_arn),
+            opts=renamed(self, "ci-preview-state"),
         )
 
         self.pulumi_role = aws.iam.Role(
-            "ci-pulumi",
+            f"{name}-pulumi-role",
             name=PULUMI_ROLE_NAME,
             description="Role for pulumi up after prod environment approval",
             assume_role_policy=_trust_policy(provider.arn, PULUMI_SUB),
-            opts=child,
+            opts=pulumi.ResourceOptions.merge(
+                renamed(self, "ci-pulumi"),
+                pulumi.ResourceOptions(delete_before_replace=True),
+            ),
         )
 
         aws.iam.RolePolicyAttachment(
-            "ci-pulumi-power-user",
+            f"{name}-pulumi-role-power-user",
             role=self.pulumi_role.name,
             policy_arn=aws.iam.ManagedPolicy.POWER_USER_ACCESS,
-            opts=child,
+            opts=renamed(self, "ci-pulumi-power-user"),
         )
 
         aws.iam.RolePolicy(
-            "ci-pulumi-iam",
+            f"{name}-pulumi-role-iam",
             role=self.pulumi_role.name,
-            policy=_pulumi_policy(account_id, state_bucket_arn, secrets_key_arn),
-            opts=child,
+            policy=_pulumi_policy(
+                args.account_id, args.state_bucket_arn, args.secrets_key_arn
+            ),
+            opts=renamed(self, "ci-pulumi-iam"),
         )
 
         self.register_outputs(

@@ -1,0 +1,27 @@
+secretsprovider: awskms://alias/jn-pulumi-secrets?region=ap-northeast-2
+encryptedkey: AQICAHjo9WNG+uH3mklUd1LRM6/I0PC/GvT2vfK9gYdSsJB6mgF/TQZo41OEYqC+fUqYaM4YAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMVECoaT4Hespg7GPUAgEQgDtbfe7i9MHevimoHIFFiYFcGGw+TXNTKczJ8U5vMu+6/213ZoCNgtf+67qmNB89vYBhqkom7LC21Xj34A==
+config:
+  aws:defaultTags:
+    tags:
+      Layer: app
+      ManagedBy: pulumi
+      Product: buddybird
+      Team: joynnovate
+  aws:region: ap-northeast-2
+  buddybird-app:api:
+    priority: 20
+    subdomain: dev
+  buddybird-app:authAccessTokenKey:
+    secure: v1:+Q9vZDOBODAXvXzw:CX2uYIscTl6A8TjOB/mUzsygtbzh3fTgbZR2WcVO1EOIAxNL/RVvS+y9PKWeOTFi3mrpWZ7rhKMqX/+I
+  buddybird-app:authRefreshTokenKey:
+    secure: v1:eoc5GdgDN6Pnt6jC:nYatMr4SPXraGFSiMAu1FXfk3kEJboGEiEhoc6gRKQO0L5zPewJSyMLluIcREi434iTGSUPQukxyAFZ5
+  buddybird-app:backofficeFrontend:
+    priority: 40
+    subdomain: dev-backoffice
+  buddybird-app:backofficePassword:
+    secure: v1:1HM7FwMxLPnhbHjH:0WdhtnJPUe60iV8O3dm1TDAwCxglEq6rqQqaNA43Iw==
+  buddybird-app:readonlyDbPassword:
+    secure: v1:UdC/irkzRomuJ4f9:P0vIlJKK97hlIZXx23Tg/ioFjciZ6wiizePaoo5baw==
+  cloudflare:apiToken:
+    secure: v1:A7atGv/6spOLKltI:Sri2+DZWe0nNhUEjw1PctBCTODjQwYjfNt8PUtADwiRgResyvL4xG5189mOfkul/WS6n0Ub+afKUXpuukUsUo+iSHQjG
+  buddybird-app:localDataBucket: "true"

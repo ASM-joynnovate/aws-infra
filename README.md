@@ -24,7 +24,8 @@ buddybird 서비스의 Amazon Web Services(AWS) 인프라를 Pulumi로 관리한
 
 설계 문서는 `docs/` 아래에 프로젝트 이름으로 있다.
 
-프로젝트마다 `prod` 스택 하나를 사용한다.
+`buddybird-app`은 환경마다 스택을 두어 `dev`와 `prod` 스택을 사용한다.
+나머지 프로젝트는 환경이 공유하는 자원을 만들기 때문에 `prod` 스택 하나를 사용한다.
 
 `buddybird-shared`는 `joynnovate-infra`의 출력값을, `buddybird-app`은 `joynnovate-infra`와 `buddybird-shared`의 출력값을 StackReference로 읽는다.
 읽히는 프로젝트를 먼저 적용한다.
@@ -52,7 +53,7 @@ buddybird 서비스의 Amazon Web Services(AWS) 인프라를 Pulumi로 관리한
 ## state
 
 - 백엔드: `s3://jn-state-198252712951-ap-northeast-2-an?region=ap-northeast-2`
-- 스택 명: `organization/<프로젝트>/prod`
+- 스택 명: `organization/<프로젝트>/<스택>`
 
 모든 프로젝트가 같은 백엔드 URL을 사용한다.
 다르게 지정하면 StackReference가 동작하지 않는다.
@@ -70,15 +71,21 @@ Pulumi가 스택 secret을 KMS 키로 암호화한다.
 | `cloudflare:apiToken` | - `joynnovate-infra`<br>- `buddybird-app` |
 | `authAccessTokenKey` | `buddybird-app` |
 | `authRefreshTokenKey` | `buddybird-app` |
+| `backofficePassword` | `buddybird-app` |
+| `readonlyDbPassword` | `buddybird-app` |
 
-`Pulumi.prod.yaml`에는 다음 항목만 작성한다.
+`buddybird-app`의 `dev`와 `prod` 스택은 스택을 나눌 때 값을 복사했기 때문에 현재 같은 secret 값을 사용한다.
+
+`Pulumi.<스택>.yaml`에는 다음 항목만 작성한다.
 
 - `aws:region`
 - `aws:defaultTags`
 - secrets provider
 - 스택 secret
+- 스택마다 다른 값
 
 도메인, 이름 접두사, 예산 금액, VPC Classless Inter-Domain Routing(CIDR)은 각 프로젝트의 Python 상수로 정의한다.
+스택마다 다른 값은 `buddybird-app`의 서브도메인, 리스너 규칙 우선순위, 스택에 포함할 서비스다.
 
 ## 인증
 
@@ -116,6 +123,10 @@ gh api /repos/<조직>/<저장소> --jq '[.owner.id, .id]'
 | --- | --- |
 | Pull Request(PR) | `pulumi preview` 결과를 PR 코멘트로 게시 |
 | Actions 탭에서 수동 실행 | `pulumi up --refresh` 실행 |
+
+`buddybird-app`은 PR에서 `dev`와 `prod` 스택을 각각 preview하고, 수동 실행할 때 적용할 스택을 선택한다.
+`dev` 스택을 적용할 때도 GitHub environment는 `prod`를 사용한다.
+CI 역할 `jn-ci-pulumi`의 신뢰 정책이 `environment:prod` 하나만 허용하기 때문이다.
 
 `--refresh`를 생략할 수 없다.
 `buddybird-app`이 ECS 서비스의 `taskDefinition`을 `ignoreChanges`로 제외하기 때문이다.

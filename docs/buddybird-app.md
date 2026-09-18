@@ -10,10 +10,10 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 
 | 파일 | 역할 |
 |---|---|
-| `__main__.py` | 데이터 버킷, 환경별 구성, DNS 레코드, 컴포넌트 조립, 출력값 |
-| `deploy.py` | `ImageDelivery` 컴포넌트, rotation 재배포 Lambda |
-| `data.py` | `DbNetwork` 컴포넌트, 버킷 하드닝, 데이터 버킷, RDS 인스턴스, 앱 시크릿, DB readonly 시크릿 |
-| `service.py` | `WebService` 컴포넌트, api ECS 서비스, 로그 그룹과 IAM 역할과 Fargate 서비스 헬퍼 |
+| `__main__.py` | 상수, 환경별 설정, 컴포넌트 조립, 출력값 |
+| `deploy.py` | `ImageDelivery` 컴포넌트 |
+| `data.py` | `DataBucket`, `Database`, `DbNetwork` 컴포넌트, 버킷 하드닝 |
+| `service.py` | `Api`, `WebService` 컴포넌트, 로그 그룹과 실행 역할과 Fargate 서비스 헬퍼 |
 | `edge.py` | `Landing`, `MbtiCdn` 컴포넌트 |
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
 | `dns.py` | Cloudflare CNAME 레코드 |
@@ -21,11 +21,15 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 
 ## 리소스 구성
 
-리소스를 컴포넌트 아래로 옮기고 있습니다.
+모든 리소스는 컴포넌트 아래에 있습니다.
 컴포넌트는 `(name, args, opts)` 생성자와 `@dataclass` Args를 사용하고 자식 논리 이름에 컴포넌트 이름을 접두어로 붙입니다.
+`Api`는 `DataBucket`과 `Database`를 자식 컴포넌트로 갖습니다.
 
 | 컴포넌트 | 이름 | 리소스 |
 |---|---|---|
+| `Api` | `api-dev`, `api-prod` | 앱 시크릿, 실행 역할과 task 역할, 로그 그룹, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, rotation 재배포 Lambda, dev의 DNS |
+| `DataBucket` | `api-dev-data`, `api-prod-data`, `api-dev-local-data` | 데이터 버킷과 하드닝, 버저닝, 라이프사이클, TLS 전용 정책, CORS |
+| `Database` | `api-dev-database`, `api-prod-database` | RDS 인스턴스, readonly 시크릿 |
 | `Landing` | `landing-prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 | `WebService` | `backoffice-frontend-dev`, `backoffice-frontend-prod`, `mbti-web-prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
 | `MbtiCdn` | `mbti-cdn-prod` | 이미지 캐시 정책, CloudFront |

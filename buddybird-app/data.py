@@ -12,7 +12,7 @@ from pulumi_aws.iam import (
 
 from moved import from_root
 
-NAME_PREFIX = "jn-buddybird-v1"
+DATA_BUCKET_PREFIX = "jn-buddybird-v1"
 ROOT_DOMAIN = "buddybird.xyz"
 
 CORS_ORIGINS = {
@@ -21,36 +21,11 @@ CORS_ORIGINS = {
     "prod": [f"https://{ROOT_DOMAIN}", f"https://backoffice.{ROOT_DOMAIN}"],
 }
 
-
-def _harden_bucket(logical_name: str, bucket: aws.s3.Bucket) -> None:
-    aws.s3.BucketServerSideEncryptionConfiguration(
-        logical_name,
-        bucket=bucket.id,
-        rules=[
-            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                    sse_algorithm="AES256"
-                )
-            )
-        ],
-    )
-
-    aws.s3.BucketPublicAccessBlock(
-        logical_name,
-        bucket=bucket.id,
-        block_public_acls=True,
-        block_public_policy=True,
-        ignore_public_acls=True,
-        restrict_public_buckets=True,
-    )
-
-    aws.s3.BucketOwnershipControls(
-        logical_name,
-        bucket=bucket.id,
-        rule=aws.s3.BucketOwnershipControlsRuleArgs(
-            object_ownership="BucketOwnerEnforced"
-        ),
-    )
+DB_ENGINE_VERSION = "17"
+DB_STORAGE_GB = 20
+DB_BACKUP_RETENTION_DAYS = 7
+DB_NAME = "buddybird"
+DB_USER = "buddybird"
 
 
 def harden_bucket(
@@ -89,106 +64,114 @@ def harden_bucket(
     )
 
 
-DB_ENGINE_VERSION = "17"
-DB_STORAGE_GB = 20
-DB_BACKUP_RETENTION_DAYS = 7
-DB_NAME = "buddybird"
-DB_USER = "buddybird"
+@dataclass(frozen=True)
+class DataBucketArgs:
+    bucket_name: str
+    cors_allowed_origins: Sequence[str]
+    previous_name: str
 
 
-def data_bucket(
-    env: str,
-    *,
-    account_id: str,
-    region: str,
-    cors_allowed_origins: list[str],
-) -> aws.s3.Bucket:
-    name = f"data-{env}"
+class DataBucket(pulumi.ComponentResource):
+    def __init__(
+        self,
+        name: str,
+        args: DataBucketArgs,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
+        super().__init__("joynnovate:buddybird:DataBucket", name, None, opts)
+        previous = args.previous_name
 
-    bucket = aws.s3.Bucket(
-        name,
-        bucket=f"{NAME_PREFIX}-{name}-{account_id}-{region}",
-        opts=pulumi.ResourceOptions(protect=True),
-    )
-
-    _harden_bucket(name, bucket)
-
-    aws.s3.BucketVersioning(
-        name,
-        bucket=bucket.id,
-        versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
-            status="Enabled"
-        ),
-    )
-
-    aws.s3.BucketLifecycleConfiguration(
-        name,
-        bucket=bucket.id,
-        rules=[
-            aws.s3.BucketLifecycleConfigurationRuleArgs(
-                id="abort-incomplete-multipart-upload",
-                status="Enabled",
-                filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
-                abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
-                    days_after_initiation=7
-                ),
+        self.bucket = aws.s3.Bucket(
+            f"{name}-bucket",
+            bucket=args.bucket_name,
+            opts=pulumi.ResourceOptions.merge(
+                from_root(self, previous),
+                pulumi.ResourceOptions(protect=True),
             ),
-            aws.s3.BucketLifecycleConfigurationRuleArgs(
-                id="expire-noncurrent-versions",
-                status="Enabled",
-                filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
-                noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
-                    noncurrent_days=30
-                ),
-            ),
-        ],
-    )
+        )
 
-    aws.s3.BucketPolicy(
-        f"{name}-tls-only",
-        bucket=bucket.id,
-        policy=aws.iam.get_policy_document_output(
-            statements=[
-                GetPolicyDocumentStatementArgs(
-                    sid="DenyInsecureTransport",
-                    effect=PolicyStatementEffect.DENY,
-                    principals=[
-                        GetPolicyDocumentStatementPrincipalArgs(
-                            type="*",
-                            identifiers=["*"],
-                        )
-                    ],
-                    actions=["s3:*"],
-                    resources=[
-                        bucket.arn,
-                        pulumi.Output.format("{0}/*", bucket.arn),
-                    ],
-                    conditions=[
-                        GetPolicyDocumentStatementConditionArgs(
-                            test="Bool",
-                            variable="aws:SecureTransport",
-                            values=["false"],
-                        )
-                    ],
+        harden_bucket(name, self.bucket, from_root(self, previous))
+
+        aws.s3.BucketVersioning(
+            f"{name}-versioning",
+            bucket=self.bucket.id,
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+                status="Enabled"
+            ),
+            opts=from_root(self, previous),
+        )
+
+        aws.s3.BucketLifecycleConfiguration(
+            f"{name}-lifecycle",
+            bucket=self.bucket.id,
+            rules=[
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="abort-incomplete-multipart-upload",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
+                    abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
+                        days_after_initiation=7
+                    ),
+                ),
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="expire-noncurrent-versions",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
+                    noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
+                        noncurrent_days=30
+                    ),
+                ),
+            ],
+            opts=from_root(self, previous),
+        )
+
+        aws.s3.BucketPolicy(
+            f"{name}-policy",
+            bucket=self.bucket.id,
+            policy=aws.iam.get_policy_document_output(
+                statements=[
+                    GetPolicyDocumentStatementArgs(
+                        sid="DenyInsecureTransport",
+                        effect=PolicyStatementEffect.DENY,
+                        principals=[
+                            GetPolicyDocumentStatementPrincipalArgs(
+                                type="*",
+                                identifiers=["*"],
+                            )
+                        ],
+                        actions=["s3:*"],
+                        resources=[
+                            self.bucket.arn,
+                            pulumi.Output.format("{0}/*", self.bucket.arn),
+                        ],
+                        conditions=[
+                            GetPolicyDocumentStatementConditionArgs(
+                                test="Bool",
+                                variable="aws:SecureTransport",
+                                values=["false"],
+                            )
+                        ],
+                    )
+                ]
+            ).json,
+            opts=from_root(self, f"{previous}-tls-only"),
+        )
+
+        aws.s3.BucketCorsConfiguration(
+            f"{name}-cors",
+            bucket=self.bucket.id,
+            cors_rules=[
+                aws.s3.BucketCorsConfigurationCorsRuleArgs(
+                    allowed_headers=["*"],
+                    allowed_methods=["GET"],
+                    allowed_origins=list(args.cors_allowed_origins),
+                    expose_headers=["Content-Length", "Content-Type"],
                 )
-            ]
-        ).json,
-    )
+            ],
+            opts=from_root(self, previous),
+        )
 
-    aws.s3.BucketCorsConfiguration(
-        name,
-        bucket=bucket.id,
-        cors_rules=[
-            aws.s3.BucketCorsConfigurationCorsRuleArgs(
-                allowed_headers=["*"],
-                allowed_methods=["GET"],
-                allowed_origins=cors_allowed_origins,
-                expose_headers=["Content-Length", "Content-Type"],
-            )
-        ],
-    )
-
-    return bucket
+        self.register_outputs({"bucket": self.bucket})
 
 
 @dataclass(frozen=True)
@@ -216,86 +199,71 @@ class DbNetwork(pulumi.ComponentResource):
         self.register_outputs({"subnet_group": self.subnet_group})
 
 
-def database(
-    env: str,
-    *,
-    name: str,
-    subnet_group_name: pulumi.Input[str],
-    security_group_id: pulumi.Input[str],
-) -> aws.rds.Instance:
-    is_prod = env == "prod"
-
-    return aws.rds.Instance(
-        f"db-{env}",
-        identifier=name,
-        engine=aws.rds.EngineType.POSTGRES,
-        engine_version=DB_ENGINE_VERSION,
-        instance_class=aws.rds.InstanceType.T4_G_MICRO,
-        allocated_storage=DB_STORAGE_GB,
-        storage_type=aws.rds.StorageType.GP3,
-        storage_encrypted=True,
-        db_name=DB_NAME,
-        username=DB_USER,
-        manage_master_user_password=True,
-        db_subnet_group_name=subnet_group_name,
-        vpc_security_group_ids=[security_group_id],
-        publicly_accessible=False,
-        backup_retention_period=DB_BACKUP_RETENTION_DAYS,
-        auto_minor_version_upgrade=True,
-        skip_final_snapshot=not is_prod,
-        final_snapshot_identifier=f"{name}-final" if is_prod else None,
-        deletion_protection=is_prod,
-        opts=pulumi.ResourceOptions(protect=True),
-    )
+@dataclass(frozen=True)
+class DatabaseArgs:
+    env: str
+    identifier: str
+    subnet_group_name: pulumi.Input[str]
+    security_group_id: pulumi.Input[str]
+    deletion_protection: bool
+    readonly_secret_name: str
+    readonly_password: pulumi.Input[str]
 
 
-def db_readonly_secret(
-    env: str,
-    *,
-    name: str,
-    password: pulumi.Input[str],
-) -> aws.secretsmanager.Secret:
-    secret = aws.secretsmanager.Secret(
-        f"db-readonly-{env}",
-        name=name,
-        description=f"buddybird-api {env} read-only database user",
-        recovery_window_in_days=0,
-    )
+class Database(pulumi.ComponentResource):
+    def __init__(
+        self,
+        name: str,
+        args: DatabaseArgs,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
+        super().__init__("joynnovate:buddybird:Database", name, None, opts)
 
-    aws.secretsmanager.SecretVersion(
-        f"db-readonly-{env}",
-        secret_id=secret.id,
-        secret_string=pulumi.Output.json_dumps({"password": password}),
-    )
+        self.instance = aws.rds.Instance(
+            f"{name}-instance",
+            identifier=args.identifier,
+            engine=aws.rds.EngineType.POSTGRES,
+            engine_version=DB_ENGINE_VERSION,
+            instance_class=aws.rds.InstanceType.T4_G_MICRO,
+            allocated_storage=DB_STORAGE_GB,
+            storage_type=aws.rds.StorageType.GP3,
+            storage_encrypted=True,
+            db_name=DB_NAME,
+            username=DB_USER,
+            manage_master_user_password=True,
+            db_subnet_group_name=args.subnet_group_name,
+            vpc_security_group_ids=[args.security_group_id],
+            publicly_accessible=False,
+            backup_retention_period=DB_BACKUP_RETENTION_DAYS,
+            auto_minor_version_upgrade=True,
+            skip_final_snapshot=not args.deletion_protection,
+            final_snapshot_identifier=(
+                f"{args.identifier}-final" if args.deletion_protection else None
+            ),
+            deletion_protection=args.deletion_protection,
+            opts=pulumi.ResourceOptions.merge(
+                from_root(self, f"db-{args.env}"),
+                pulumi.ResourceOptions(protect=True),
+            ),
+        )
 
-    return secret
+        self.readonly_secret = aws.secretsmanager.Secret(
+            f"{name}-readonly-secret",
+            name=args.readonly_secret_name,
+            description=f"buddybird-api {args.env} read-only database user",
+            recovery_window_in_days=0,
+            opts=from_root(self, f"db-readonly-{args.env}"),
+        )
 
+        aws.secretsmanager.SecretVersion(
+            f"{name}-readonly-secret-version",
+            secret_id=self.readonly_secret.id,
+            secret_string=pulumi.Output.json_dumps(
+                {"password": args.readonly_password}
+            ),
+            opts=from_root(self, f"db-readonly-{args.env}"),
+        )
 
-def app_secret(
-    env: str,
-    *,
-    name: str,
-    access_token_key: pulumi.Input[str],
-    refresh_token_key: pulumi.Input[str],
-    backoffice_password: pulumi.Input[str],
-) -> aws.secretsmanager.Secret:
-    secret = aws.secretsmanager.Secret(
-        f"app-{env}",
-        name=name,
-        description=f"buddybird-api {env} token signing keys",
-        recovery_window_in_days=0,
-    )
-
-    aws.secretsmanager.SecretVersion(
-        f"app-{env}",
-        secret_id=secret.id,
-        secret_string=pulumi.Output.json_dumps(
-            {
-                "access_token_key": access_token_key,
-                "refresh_token_key": refresh_token_key,
-                "backoffice_password": backoffice_password,
-            }
-        ),
-    )
-
-    return secret
+        self.register_outputs(
+            {"instance": self.instance, "readonly_secret": self.readonly_secret}
+        )

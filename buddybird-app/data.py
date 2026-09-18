@@ -48,6 +48,42 @@ def _harden_bucket(logical_name: str, bucket: aws.s3.Bucket) -> None:
     )
 
 
+def harden_bucket(
+    name: str, bucket: aws.s3.Bucket, opts: pulumi.ResourceOptions
+) -> None:
+    aws.s3.BucketServerSideEncryptionConfiguration(
+        f"{name}-encryption",
+        bucket=bucket.id,
+        rules=[
+            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                    sse_algorithm="AES256"
+                )
+            )
+        ],
+        opts=opts,
+    )
+
+    aws.s3.BucketPublicAccessBlock(
+        f"{name}-public-access-block",
+        bucket=bucket.id,
+        block_public_acls=True,
+        block_public_policy=True,
+        ignore_public_acls=True,
+        restrict_public_buckets=True,
+        opts=opts,
+    )
+
+    aws.s3.BucketOwnershipControls(
+        f"{name}-ownership",
+        bucket=bucket.id,
+        rule=aws.s3.BucketOwnershipControlsRuleArgs(
+            object_ownership="BucketOwnerEnforced"
+        ),
+        opts=opts,
+    )
+
+
 DB_ENGINE_VERSION = "17"
 DB_STORAGE_GB = 20
 DB_BACKUP_RETENTION_DAYS = 7

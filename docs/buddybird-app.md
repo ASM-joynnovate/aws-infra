@@ -10,11 +10,23 @@ buddybird 전용 RDS, ECS 서비스, 배포 역할 구성
 
 | 파일 | 역할 |
 |---|---|
-| `__main__.py` | 데이터 버킷, 환경별 구성, DNS 레코드, 출력값 |
+| `__main__.py` | 데이터 버킷, 환경별 구성, DNS 레코드, 컴포넌트 조립, 출력값 |
 | `deploy.py` | ECR 저장소, api와 backoffice frontend 배포 역할, `mbti_web_deploy_role`, rotation 재배포 Lambda |
-| `data.py` | RDS 서브넷 그룹, RDS 인스턴스, 앱 시크릿, DB readonly 시크릿 |
+| `data.py` | 버킷 하드닝, RDS 서브넷 그룹, RDS 인스턴스, 앱 시크릿, DB readonly 시크릿 |
 | `service.py` | 로그 그룹, IAM 역할, api와 backoffice frontend ECS 서비스, `mbti_web_service` |
-| `edge.py` | 랜딩 페이지 버킷·CloudFront·OAC·rewrite 함수, MBTI 전용 CloudFront |
+| `edge.py` | `Landing` 컴포넌트, MBTI 전용 CloudFront |
+| `oidc.py` | GitHub OIDC 신뢰 정책 |
+| `dns.py` | Cloudflare CNAME 레코드 |
+| `moved.py` | 컴포넌트 이전에 사용하는 aliases 헬퍼, 이전 완료 후 삭제 |
+
+## 리소스 구성
+
+리소스를 컴포넌트 아래로 옮기고 있습니다.
+컴포넌트는 `(name, args, opts)` 생성자와 `@dataclass` Args를 사용하고 자식 논리 이름에 컴포넌트 이름을 접두어로 붙입니다.
+
+| 컴포넌트 | 이름 | 리소스 |
+|---|---|---|
+| `Landing` | `landing-prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 
 ## 환경
 

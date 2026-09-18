@@ -57,6 +57,16 @@ account_id = aws.get_caller_identity().account_id
 config = pulumi.Config()
 infra = pulumi.StackReference(INFRA_STACK)
 
+vpc_id = infra.require_output("vpc_id")
+public_subnet_ids = infra.require_output("public_subnet_ids")
+private_subnet_ids = infra.require_output("private_subnet_ids")
+task_security_group_id = infra.require_output("task_security_group_id")
+db_security_group_id = infra.require_output("db_security_group_id")
+cluster_arn = infra.require_output("cluster_arn")
+alb_dns_name = infra.require_output("alb_dns_name")
+https_listener_arn = infra.require_output("https_listener_arn")
+cloudfront_certificate_arn = infra.require_output("cloudfront_certificate_arn")
+
 
 buckets = {
     env: data_bucket(
@@ -79,7 +89,7 @@ deploy = api_deploy_role(
     account_id=account_id,
     region=region,
     repository_arn=repository.arn,
-    cluster_arn=infra.get_output("cluster_arn"),
+    cluster_arn=cluster_arn,
     cluster_name=ECS_CLUSTER_NAME,
     prefix=API_PREFIX,
 )
@@ -93,7 +103,7 @@ mbti_web_deploy = mbti_web_deploy_role(
     prefix=MBTI_WEB_PREFIX,
 )
 
-subnet_group = db_subnet_group(API_PREFIX, infra.get_output("private_subnet_ids"))
+subnet_group = db_subnet_group(API_PREFIX, private_subnet_ids)
 
 for env, api_settings in API_ENVIRONMENTS.items():
     name = f"{API_PREFIX}-{env}"
@@ -102,7 +112,7 @@ for env, api_settings in API_ENVIRONMENTS.items():
         env,
         name=name,
         subnet_group_name=subnet_group.name,
-        security_group_id=infra.get_output("db_security_group_id"),
+        security_group_id=db_security_group_id,
     )
 
     secret = app_secret(
@@ -131,11 +141,11 @@ for env, api_settings in API_ENVIRONMENTS.items():
         bucket=buckets[env],
         database=db,
         secret=secret,
-        vpc_id=infra.get_output("vpc_id"),
-        subnet_ids=infra.get_output("public_subnet_ids"),
-        task_security_group_id=infra.get_output("task_security_group_id"),
-        cluster_arn=infra.get_output("cluster_arn"),
-        listener_arn=infra.get_output("https_listener_arn"),
+        vpc_id=vpc_id,
+        subnet_ids=public_subnet_ids,
+        task_security_group_id=task_security_group_id,
+        cluster_arn=cluster_arn,
+        listener_arn=https_listener_arn,
         hostname=api_settings["hostname"],
         priority=api_settings["priority"],
         cors_origin=json.dumps([f"https://{backoffice_frontend_settings['hostname']}"]),
@@ -145,7 +155,7 @@ for env, api_settings in API_ENVIRONMENTS.items():
         env,
         name=name,
         secret_arn=db.master_user_secrets[0].secret_arn,
-        cluster_arn=infra.get_output("cluster_arn"),
+        cluster_arn=cluster_arn,
         service=api,
     )
 
@@ -157,11 +167,11 @@ for env, api_settings in API_ENVIRONMENTS.items():
             backoffice_frontend_repository.repository_url, f":{env}-bootstrap"
         ),
         region=region,
-        vpc_id=infra.get_output("vpc_id"),
-        subnet_ids=infra.get_output("public_subnet_ids"),
-        task_security_group_id=infra.get_output("task_security_group_id"),
-        cluster_arn=infra.get_output("cluster_arn"),
-        listener_arn=infra.get_output("https_listener_arn"),
+        vpc_id=vpc_id,
+        subnet_ids=public_subnet_ids,
+        task_security_group_id=task_security_group_id,
+        cluster_arn=cluster_arn,
+        listener_arn=https_listener_arn,
         hostname=backoffice_frontend_settings["hostname"],
         priority=backoffice_frontend_settings["priority"],
     )
@@ -174,11 +184,11 @@ for env, mbti_web_settings in MBTI_WEB_ENVIRONMENTS.items():
             mbti_web_repository.repository_url, f":{env}-bootstrap"
         ),
         region=region,
-        vpc_id=infra.get_output("vpc_id"),
-        subnet_ids=infra.get_output("public_subnet_ids"),
-        task_security_group_id=infra.get_output("task_security_group_id"),
-        cluster_arn=infra.get_output("cluster_arn"),
-        listener_arn=infra.get_output("https_listener_arn"),
+        vpc_id=vpc_id,
+        subnet_ids=public_subnet_ids,
+        task_security_group_id=task_security_group_id,
+        cluster_arn=cluster_arn,
+        listener_arn=https_listener_arn,
         hostname=mbti_web_settings["hostname"],
         priority=mbti_web_settings["priority"],
     )
@@ -196,21 +206,19 @@ site = site_bucket(f"{LANDING_FE_PREFIX}-{account_id}-{region}")
 
 cdn = distribution(
     bucket=site,
-    alb_dns_name=infra.get_output("alb_dns_name"),
-    certificate_arn=infra.get_output("cloudfront_certificate_arn"),
+    alb_dns_name=alb_dns_name,
+    certificate_arn=cloudfront_certificate_arn,
     aliases=[ROOT_DOMAIN, f"www.{ROOT_DOMAIN}"],
 )
 
 mbti_cdn = mbti_web_distribution(
-    alb_dns_name=infra.get_output("alb_dns_name"),
-    certificate_arn=infra.get_output("cloudfront_certificate_arn"),
+    alb_dns_name=alb_dns_name,
+    certificate_arn=cloudfront_certificate_arn,
     hostname=MBTI_WEB_ENVIRONMENTS["prod"]["hostname"],
 )
 # Keep ALB routing until the distribution has passed pre-cutover checks.
 mbti_cdn_enabled = config.get_bool("mbtiCdnEnabled") or False
-mbti_dns_target = (
-    mbti_cdn.domain_name if mbti_cdn_enabled else infra.get_output("alb_dns_name")
-)
+mbti_dns_target = mbti_cdn.domain_name if mbti_cdn_enabled else alb_dns_name
 
 landing_fe_deploy = landing_fe_deploy_role(
     name=f"{LANDING_FE_PREFIX}-deploy",
@@ -222,13 +230,13 @@ landing_fe_deploy = landing_fe_deploy_role(
 for label, hostname, target in (
     ("root", ROOT_DOMAIN, cdn.domain_name),
     ("www", f"www.{ROOT_DOMAIN}", cdn.domain_name),
-    ("dev", f"dev.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
+    ("dev", f"dev.{ROOT_DOMAIN}", alb_dns_name),
     ("mbti", f"mbti.{ROOT_DOMAIN}", mbti_dns_target),
-    ("backoffice", f"backoffice.{ROOT_DOMAIN}", infra.get_output("alb_dns_name")),
+    ("backoffice", f"backoffice.{ROOT_DOMAIN}", alb_dns_name),
     (
         "dev-backoffice",
         f"dev-backoffice.{ROOT_DOMAIN}",
-        infra.get_output("alb_dns_name"),
+        alb_dns_name,
     ),
 ):
     cloudflare.DnsRecord(
@@ -251,13 +259,13 @@ pulumi.export(
     backoffice_frontend_repository.repository_url,
 )
 pulumi.export("mbti_web_repository_url", mbti_web_repository.repository_url)
-pulumi.export("deploy_role_arn", deploy.arn)
-pulumi.export("site_bucket_name", site.id)
-pulumi.export("site_distribution_id", cdn.id)
-pulumi.export("site_distribution_domain", cdn.domain_name)
+pulumi.export("api_deploy_role_arn", deploy.arn)
+pulumi.export("landing_bucket_name", site.id)
+pulumi.export("landing_distribution_id", cdn.id)
+pulumi.export("landing_distribution_domain", cdn.domain_name)
 pulumi.export("backoffice_frontend_deploy_role_arn", backoffice_frontend_deploy.arn)
 pulumi.export("mbti_web_deploy_role_arn", mbti_web_deploy.arn)
-pulumi.export("site_deploy_role_arn", landing_fe_deploy.arn)
+pulumi.export("landing_deploy_role_arn", landing_fe_deploy.arn)
 
 pulumi.export("mbti_web_distribution_id", mbti_cdn.id)
 pulumi.export("mbti_web_distribution_domain", mbti_cdn.domain_name)

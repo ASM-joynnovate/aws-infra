@@ -50,6 +50,7 @@
 | 항목 | 값 |
 |---|---|
 | AMI | Amazon Linux 2023 ARM64 |
+| AMI 갱신 | 새 AMI가 게시돼도 인스턴스 유지, 교체는 `pulumi up --replace`로 실행 |
 | 인스턴스 타입 | t4g.nano |
 | 서브넷 | public 서브넷 첫 번째 |
 | 보안 그룹 | `jn-ssm` |

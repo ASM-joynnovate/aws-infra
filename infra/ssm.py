@@ -1,3 +1,4 @@
+import pulumi
 import pulumi_aws as aws
 
 SSM_MANAGED_POLICY_ARN = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
@@ -51,4 +52,5 @@ def bastion(name, subnet, security_group):
             http_endpoint="enabled",
         ),
         tags={"Name": f"{name}-ssm"},
+        opts=pulumi.ResourceOptions(ignore_changes=["ami"]),
     )

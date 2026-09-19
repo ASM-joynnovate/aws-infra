@@ -20,6 +20,22 @@ START_DB_CRON = "cron(50 8 * * ? *)"
 START_SERVICE_CRON = "cron(0 9 * * ? *)"
 
 
+def scheduler_assume_role_policy() -> str:
+    return aws.iam.get_policy_document(
+        statements=[
+            GetPolicyDocumentStatementArgs(
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["sts:AssumeRole"],
+                principals=[
+                    GetPolicyDocumentStatementPrincipalArgs(
+                        type="Service", identifiers=["scheduler.amazonaws.com"]
+                    )
+                ],
+            )
+        ]
+    ).json
+
+
 @dataclass(frozen=True)
 class NightlyStopArgs:
     name_prefix: str
@@ -41,20 +57,7 @@ class NightlyStop(pulumi.ComponentResource):
         role = aws.iam.Role(
             f"{name}-role",
             name=f"{args.name_prefix}-nightly-stop",
-            assume_role_policy=aws.iam.get_policy_document(
-                statements=[
-                    GetPolicyDocumentStatementArgs(
-                        effect=PolicyStatementEffect.ALLOW,
-                        actions=["sts:AssumeRole"],
-                        principals=[
-                            GetPolicyDocumentStatementPrincipalArgs(
-                                type="Service",
-                                identifiers=["scheduler.amazonaws.com"],
-                            )
-                        ],
-                    )
-                ]
-            ).json,
+            assume_role_policy=scheduler_assume_role_policy(),
             opts=pulumi.ResourceOptions.merge(
                 child, pulumi.ResourceOptions(delete_before_replace=True)
             ),

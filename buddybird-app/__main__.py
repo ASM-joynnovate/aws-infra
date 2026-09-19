@@ -5,13 +5,17 @@ import pulumi_aws as aws
 
 from data import LOCAL_CORS_ORIGINS, ROOT_DOMAIN
 from edge import Landing, LandingArgs, MbtiCdn, MbtiCdnArgs
+from messaging import Messaging, MessagingArgs
 from schedule import NightlyStop, NightlyStopArgs
 from service import DEFAULT_CAPACITY, Api, ApiArgs, WebService, WebServiceArgs
 
-API_PREFIX = "jn-buddybird-api"
-BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
-LANDING_PREFIX = "jn-buddybird-site"
-MBTI_WEB_PREFIX = "jn-buddybird-mbti"
+PREFIX = "jn-buddybird"
+API_PREFIX = f"{PREFIX}-api"
+BACKOFFICE_FRONTEND_PREFIX = f"{PREFIX}-backoffice-frontend"
+LANDING_PREFIX = f"{PREFIX}-site"
+MBTI_WEB_PREFIX = f"{PREFIX}-mbti"
+
+ALARM_EMAILS = ["joynnovate@gmail.com"]
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"
 
@@ -100,13 +104,22 @@ api = Api(
     ),
 )
 
+messaging = Messaging(
+    f"messaging-{env}",
+    MessagingArgs(
+        name_prefix=f"{PREFIX}-{env}",
+        data_bucket_name=api.data.bucket.id,
+        alarm_emails=ALARM_EMAILS,
+    ),
+)
+
 if backoffice_frontend_settings is not None:
     WebService(
         f"backoffice-frontend-{env}",
         WebServiceArgs(
             service="backoffice-frontend",
             service_name=f"{BACKOFFICE_FRONTEND_PREFIX}-{env}",
-            target_group_name=f"jn-buddybird-bo-fe-{env}",
+            target_group_name=f"{PREFIX}-bo-fe-{env}",
             image=pulumi.Output.concat(
                 backoffice_frontend_repository_url, f":{env}-bootstrap"
             ),
@@ -127,7 +140,7 @@ if nightly_stop_enabled:
     NightlyStop(
         f"nightly-stop-{env}",
         NightlyStopArgs(
-            name_prefix=f"jn-buddybird-{env}",
+            name_prefix=f"{PREFIX}-{env}",
             cluster_arn=cluster_arn,
             service=api.service,
             database=api.database.instance,
@@ -135,6 +148,9 @@ if nightly_stop_enabled:
     )
 
 pulumi.export("data_bucket_name", api.data.bucket.id)
+pulumi.export(
+    "queue_urls", {suffix: queue.url for suffix, queue in messaging.queues.items()}
+)
 if api.local_data is not None:
     pulumi.export("data_local_bucket_name", api.local_data.bucket.id)
 

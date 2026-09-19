@@ -20,6 +20,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
 | `dns.py` | Cloudflare CNAME 레코드 |
 | `schedule.py` | `NightlyStop` 컴포넌트 |
+| `messaging.py` | `Messaging` 컴포넌트 |
 
 ## 리소스 구성
 
@@ -40,6 +41,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `WebService` | `backoffice-frontend-prod` | `prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
 | `WebService` | `mbti-web-prod` | `prod` | backoffice frontend와 같음 |
 | `MbtiCdn` | `mbti-cdn-prod` | `prod` | 이미지 캐시 정책, CloudFront |
+| `Messaging` | `messaging-<스택>` | `dev`, `prod` | SQS 큐와 DLQ, DLQ 알람, 알람 topic, 업로드 이벤트 rule, 1분 주기 스케줄 |
 | `NightlyStop` | `nightly-stop-dev` | `dev` | EventBridge Scheduler 4개, 실행 역할과 정책 |
 | `Landing` | `landing-prod` | `prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 
@@ -212,9 +214,26 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | 버킷 정책 | TLS 필수 |
 | 버저닝 | 활성화 |
 | 이전 버전 | 30일 후 삭제 |
+| 만료된 delete marker | 삭제 |
 | 미완료 멀티파트 업로드 | 7일 후 삭제 |
+| EventBridge 알림 | 활성화 |
+
+#### 객체 만료
+
+| 대상 | 만료 | 이전 버전 |
+|---|---|---|
+| `upload/` prefix | 1일 | 1일 후 삭제 |
+| 태그 `retention=7d` | 7일 | 1일 후 삭제 |
+| 태그 `retention=90d` | 90일 | 1일 후 삭제 |
+
+`upload/`에는 변환 전 이미지 원본이 올라옵니다.
+api는 세션 소리의 presigned URL에 `retention=7d` 태그를 서명합니다.
+consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`로 변경합니다.
+응급 클립에는 `retention=90d`를 사용합니다.
 
 #### CORS
+
+허용 메서드는 `GET`과 `PUT`입니다.
 
 | 환경 | 허용 출처 |
 |---|---|
@@ -259,6 +278,38 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | `AUTH_ACCESS_TOKEN_SECRET_KEY` | `<앱 시크릿 ARN>:access_token_key::` |
 | `AUTH_REFRESH_TOKEN_SECRET_KEY` | `<앱 시크릿 ARN>:refresh_token_key::` |
 | `BACKOFFICE_PASSWORD` | `<앱 시크릿 ARN>:backoffice_password::` |
+
+## 메시지 큐
+
+서비스 사이의 메시지는 보내는 쪽이 대상 SQS 큐에 직접 전송합니다.
+큐 이름은 `jn-buddybird-<env>-<용도>`이고 큐마다 `-dlq`를 붙인 DLQ가 있습니다.
+
+| 큐 | 읽는 프로세스 | 메시지 | 보내는 쪽 | visibility timeout |
+|---|---|---|---|---|
+| `upload-confirmation` | consumer | S3 Object Created 이벤트 | 데이터 버킷의 EventBridge rule | 60초 |
+| `parrot-sound-detection` | 1단계 판정 worker | 명령 `sound.classify` | consumer | 300초 |
+| `mimicry-judgment` | 2단계 판정 worker | 명령 `sound.judge_mimicry` | consumer | 300초 |
+| `judgment-result` | consumer | 이벤트 `sound.classified`, `sound.mimicry_judged` | 판정 worker | 30초 |
+| `notification` | consumer | 명령 `notification.send` | api, consumer | 30초 |
+| `withdrawal` | consumer | 명령 `withdrawal.process`, `withdrawal.dispatch` | api, 1분 주기 스케줄 | 300초 |
+| `heartbeat-check` | consumer | 명령 `session.check_heartbeats` | 1분 주기 스케줄 | 30초 |
+
+판정 큐 두 개의 300초는 초기값이며 모델의 처리 시간이 나오면 조정합니다.
+메시지 type은 `<대상>.<동사>` 형태이고 명령은 명령형으로, 이벤트는 과거형으로 짓습니다.
+
+| 항목 | 값 |
+|---|---|
+| `maxReceiveCount` | 5 |
+| DLQ 보존 기간 | 14일 |
+| DLQ 알람 | 메시지 수가 0보다 크면 `jn-buddybird-<env>-alarms` topic으로 팀 이메일 발송 |
+| 업로드 이벤트 rule | `jn-buddybird-<env>-upload-created` |
+| 업로드 이벤트 key 조건 | `upload/` prefix, `user/*/word/*`, `user/*/session/*` |
+| 1분 주기 스케줄 | `jn-buddybird-<env>-withdrawal-dispatch`, `jn-buddybird-<env>-heartbeat-check` |
+| 스케줄 실행 역할 | `jn-buddybird-<env>-scheduler` |
+
+변환된 이미지와 서버 내부 업로드의 key는 업로드 이벤트 조건에 해당하지 않으므로 이벤트가 반복되지 않습니다.
+첫 적용 뒤 수신 메일에서 구독을 승인해야 알람 메일을 받습니다.
+큐 URL은 stack output `queue_urls`로 조회합니다.
 
 ## backoffice frontend
 

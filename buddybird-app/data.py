@@ -15,6 +15,12 @@ ROOT_DOMAIN = "buddybird.xyz"
 
 LOCAL_CORS_ORIGINS = ["http://localhost:3000"]
 
+UPLOAD_PREFIX = "upload/"
+UPLOAD_EXPIRATION_DAYS = 1
+RETENTION_TAG_KEY = "retention"
+RETENTION_DAYS_BY_TAG = {"7d": 7, "90d": 90}
+EXPIRED_NONCURRENT_DAYS = 1
+
 DB_ENGINE_VERSION = "17"
 DB_STORAGE_GB = 20
 DB_BACKUP_RETENTION_DAYS = 7
@@ -109,10 +115,44 @@ class DataBucket(pulumi.ComponentResource):
                     id="expire-noncurrent-versions",
                     status="Enabled",
                     filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        expired_object_delete_marker=True
+                    ),
                     noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
                         noncurrent_days=30
                     ),
                 ),
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="expire-upload-originals",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix=UPLOAD_PREFIX
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=UPLOAD_EXPIRATION_DAYS
+                    ),
+                    noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
+                        noncurrent_days=EXPIRED_NONCURRENT_DAYS
+                    ),
+                ),
+                *[
+                    aws.s3.BucketLifecycleConfigurationRuleArgs(
+                        id=f"expire-retention-{tag_value}",
+                        status="Enabled",
+                        filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                            tag=aws.s3.BucketLifecycleConfigurationRuleFilterTagArgs(
+                                key=RETENTION_TAG_KEY, value=tag_value
+                            )
+                        ),
+                        expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                            days=days
+                        ),
+                        noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
+                            noncurrent_days=EXPIRED_NONCURRENT_DAYS
+                        ),
+                    )
+                    for tag_value, days in RETENTION_DAYS_BY_TAG.items()
+                ],
             ],
             opts=pulumi.ResourceOptions(parent=self),
         )
@@ -155,11 +195,18 @@ class DataBucket(pulumi.ComponentResource):
             cors_rules=[
                 aws.s3.BucketCorsConfigurationCorsRuleArgs(
                     allowed_headers=["*"],
-                    allowed_methods=["GET"],
+                    allowed_methods=["GET", "PUT"],
                     allowed_origins=list(args.cors_allowed_origins),
                     expose_headers=["Content-Length", "Content-Type"],
                 )
             ],
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        aws.s3.BucketNotification(
+            f"{name}-notification",
+            bucket=self.bucket.id,
+            eventbridge=True,
             opts=pulumi.ResourceOptions(parent=self),
         )
 

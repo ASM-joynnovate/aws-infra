@@ -3,7 +3,7 @@ import json
 import pulumi
 import pulumi_aws as aws
 
-from data import LOCAL_CORS_ORIGINS, ROOT_DOMAIN
+from data import LOCAL_CORS_ORIGINS, ROOT_DOMAIN, data_bucket_name
 from edge import Landing, LandingArgs, MbtiCdn, MbtiCdnArgs
 from messaging import Messaging, MessagingArgs
 from schedule import NightlyStop, NightlyStopArgs
@@ -16,6 +16,24 @@ LANDING_PREFIX = f"{PREFIX}-site"
 MBTI_WEB_PREFIX = f"{PREFIX}-mbti"
 
 ALARM_EMAILS = ["joynnovate@gmail.com"]
+
+APP_ENVIRONMENT_CONFIG_KEYS = {
+    "supabaseUrl": "SUPABASE_URL",
+    "supabasePublishableKey": "SUPABASE_PUBLISHABLE_KEY",
+    "googleClientId": "GOOGLE_CLIENT_ID",
+    "appleClientIds": "APPLE_CLIENT_IDS",
+    "appleTeamId": "APPLE_TEAM_ID",
+    "appleKeyId": "APPLE_KEY_ID",
+}
+APP_SECRET_CONFIG_KEYS = {
+    "backofficePassword": "backoffice_password",
+    "supabaseSecretKey": "supabase_secret_key",
+    "oauthCredentialsKey": "oauth_credentials_key",
+    "googleClientSecret": "google_client_secret",
+    "applePrivateKey": "apple_private_key",
+    "kakaoAdminKey": "kakao_admin_key",
+    "fcmServiceAccountJson": "fcm_service_account_json",
+}
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"
 
@@ -40,6 +58,16 @@ local_data_bucket_enabled = config.get_bool("localDataBucket") or False
 db_deletion_protection = config.get_bool("dbDeletionProtection") or False
 mbti_cdn_enabled = config.get_bool("mbtiCdnEnabled") or False
 nightly_stop_enabled = config.get_bool("nightlyStop") or False
+consumer_separate = config.get_bool("consumerSeparate") or False
+
+app_environment = {
+    variable: config.require(key)
+    for key, variable in APP_ENVIRONMENT_CONFIG_KEYS.items()
+}
+app_secrets = {
+    secret_key: config.require_secret(key)
+    for key, secret_key in APP_SECRET_CONFIG_KEYS.items()
+}
 
 api_hostname = hostname(api_settings.get("subdomain"))
 backoffice_frontend_hostname = (
@@ -72,6 +100,15 @@ backoffice_frontend_repository_url = shared.require_output(
 mbti_web_repository_url = shared.require_output("mbti_web_repository_url")
 db_subnet_group_name = shared.require_output("db_subnet_group_name")
 
+messaging = Messaging(
+    f"messaging-{env}",
+    MessagingArgs(
+        name_prefix=f"{PREFIX}-{env}",
+        data_bucket_name=data_bucket_name(env, account_id, region),
+        alarm_emails=ALARM_EMAILS,
+    ),
+)
+
 api = Api(
     f"api-{env}",
     ApiArgs(
@@ -87,9 +124,8 @@ api = Api(
         deletion_protection=db_deletion_protection,
         subnet_group_name=db_subnet_group_name,
         db_security_group_id=db_security_group_id,
-        access_token_key=config.require_secret("authAccessTokenKey"),
-        refresh_token_key=config.require_secret("authRefreshTokenKey"),
-        backoffice_password=config.require_secret("backofficePassword"),
+        app_secrets=app_secrets,
+        app_environment=app_environment,
         readonly_db_password=config.require_secret("readonlyDbPassword"),
         vpc_id=vpc_id,
         subnet_ids=public_subnet_ids,
@@ -101,15 +137,9 @@ api = Api(
             LOCAL_CORS_ORIGINS if local_data_bucket_enabled else None
         ),
         capacity=api_settings.get("capacity", DEFAULT_CAPACITY),
-    ),
-)
-
-messaging = Messaging(
-    f"messaging-{env}",
-    MessagingArgs(
         name_prefix=f"{PREFIX}-{env}",
-        data_bucket_name=api.data.bucket.id,
-        alarm_emails=ALARM_EMAILS,
+        queues=messaging.queues,
+        consumer_separate=consumer_separate,
     ),
 )
 

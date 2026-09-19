@@ -13,15 +13,19 @@ from pulumi_aws.iam import (
 from schedule import scheduler_assume_role_policy
 
 UPLOAD_CONFIRMATION = "upload-confirmation"
+PARROT_SOUND_DETECTION = "parrot-sound-detection"
+MIMICRY_JUDGMENT = "mimicry-judgment"
+JUDGMENT_RESULT = "judgment-result"
+NOTIFICATION = "notification"
 WITHDRAWAL = "withdrawal"
 PERIODIC_COMMAND = "periodic-command"
 
 QUEUE_VISIBILITY_TIMEOUTS = {
     UPLOAD_CONFIRMATION: 60,
-    "parrot-sound-detection": 300,
-    "mimicry-judgment": 300,
-    "judgment-result": 30,
-    "notification": 30,
+    PARROT_SOUND_DETECTION: 300,
+    MIMICRY_JUDGMENT: 300,
+    JUDGMENT_RESULT: 30,
+    NOTIFICATION: 30,
     WITHDRAWAL: 300,
     PERIODIC_COMMAND: 30,
 }

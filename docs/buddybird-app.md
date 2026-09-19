@@ -34,7 +34,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 
 | 컴포넌트 | 이름 | 스택 | 리소스 |
 |---|---|---|---|
-| `Api` | `api-<스택>` | `dev`, `prod` | 앱 시크릿, 실행 역할과 task 역할, 로그 그룹, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, rotation 재배포 Lambda, 랜딩이 없는 스택의 DNS |
+| `Api` | `api-<스택>` | `dev`, `prod` | 앱 시크릿, 실행 역할과 task 역할, 로그 그룹, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, consumer, rotation 재배포 Lambda, 랜딩이 없는 스택의 DNS |
 | `DataBucket` | `api-<스택>-data` | `dev`, `prod` | 데이터 버킷과 하드닝, 버저닝, 라이프사이클, TLS 전용 정책, CORS |
 | `DataBucket` | `api-dev-local-data` | `dev` | 로컬 개발용 데이터 버킷 |
 | `Database` | `api-<스택>-database` | `dev`, `prod` | RDS 인스턴스, readonly 시크릿 |
@@ -84,6 +84,9 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `dbDeletionProtection` | `true`이면 RDS 삭제 보호와 최종 스냅샷 사용 | X |
 | `mbtiCdnEnabled` | `true`이면 mbti DNS를 MBTI CloudFront로 연결 | X |
 | `nightlyStop` | `true`인 스택의 api 서비스와 RDS를 매일 03시에 정지하고 09시에 시작 | X |
+| `consumerSeparate` | `true`이면 consumer를 별도 ECS 서비스로 생성. 없으면 api task의 두 번째 컨테이너로 실행 | X |
+| `supabaseUrl`, `supabasePublishableKey`, `googleClientId`, `appleClientIds`, `appleTeamId`, `appleKeyId` | api와 consumer의 환경 변수 값 | O |
+| `supabaseSecretKey`, `oauthCredentialsKey`, `googleClientSecret`, `applePrivateKey`, `kakaoAdminKey`, `fcmServiceAccountJson` | 앱 시크릿에 저장하는 secret | O |
 
 `capacity`는 ECS 서비스의 capacity provider 전략이고 기본값은 `on-demand`입니다.
 
@@ -110,6 +113,9 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | api: execution role | `jn-buddybird-api-<env>-exec` |
 | api: 로그 그룹 | `/ecs/jn-buddybird-api-<env>` |
 | api: rotation Lambda, 역할, EventBridge 규칙 | `jn-buddybird-api-<env>-rotation` |
+| consumer: ECS 서비스, task definition | `jn-buddybird-api-prod-consumer` |
+| consumer: task role | `jn-buddybird-api-prod-consumer-task` |
+| consumer: 로그 그룹 | `/ecs/jn-buddybird-api-prod-consumer` |
 | 데이터 버킷 | `jn-buddybird-v1-data-<env>-<계정>-<리전>` |
 | backoffice frontend: ECS 서비스, task definition | `jn-buddybird-backoffice-frontend-<env>` |
 | backoffice frontend: 타깃 그룹 | `jn-buddybird-bo-fe-<env>` |
@@ -193,9 +199,13 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 
 | JSON 키 | 용도 |
 |---|---|
-| `access_token_key` | 액세스 토큰 서명 |
-| `refresh_token_key` | 리프레시 토큰 서명 |
 | `backoffice_password` | backoffice 로그인 |
+| `supabase_secret_key` | Supabase Auth 관리 API 호출 |
+| `oauth_credentials_key` | 저장하는 OAuth 자격 증명의 Fernet 암호화 |
+| `google_client_secret` | Google OAuth 토큰 요청 |
+| `apple_private_key` | Apple 로그인의 client secret 서명 |
+| `kakao_admin_key` | Kakao 관리 API 호출 |
+| `fcm_service_account_json` | FCM 발송 |
 
 ### DB readonly 시크릿
 
@@ -247,7 +257,7 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 |---|---|
 | 아키텍처 | ARM64 Fargate |
 | cpu | 256 |
-| memory | 512 |
+| memory | prod 512, dev 1024 |
 | 포트 | 8000 |
 | 헬스체크 | `/api/healthz`, 10초 간격 |
 | capacity provider | prod `on-demand-with-spot`, dev `spot` |
@@ -259,25 +269,61 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 
 | 변수 | 값 |
 |---|---|
-| `BUDDYBIRD_ENV` | `dev` 또는 `prod` |
+| `ENV` | `dev` 또는 `prod` |
 | `DB_HOST` | RDS 주소 |
 | `DB_NAME` | `buddybird` |
 | `DB_USER` | `buddybird` |
 | `S3_BUCKET_NAME` | 데이터 버킷 이름 |
-| `S3_BUCKET_DOMAIN` | `https://<버킷>.s3.<리전>.amazonaws.com` |
-| `AUTH_ALGORITHM` | `HS256` |
-| `AUTH_ACCESS_TOKEN_EXPIRE_MINUTES` | `10080` |
-| `AUTH_REFRESH_TOKEN_EXPIRE_MINUTES` | `20160` |
 | `FRONTEND_CORS_ORIGIN` | `["https://<backoffice frontend 호스트명>"]` |
+| `SUPABASE_URL` | 스택 config `supabaseUrl` |
+| `SUPABASE_PUBLISHABLE_KEY` | 스택 config `supabasePublishableKey` |
+| `GOOGLE_CLIENT_ID` | 스택 config `googleClientId` |
+| `APPLE_CLIENT_IDS` | 스택 config `appleClientIds`, JSON 배열 문자열 |
+| `APPLE_TEAM_ID` | 스택 config `appleTeamId` |
+| `APPLE_KEY_ID` | 스택 config `appleKeyId` |
+| `SQS_<큐 이름>_QUEUE_URL` | 큐 URL 7개. 큐 이름은 대문자로 쓰고 `-`를 `_`로 변경. 예: `SQS_PERIODIC_COMMAND_QUEUE_URL` |
 
 ### 시크릿
 
 | 변수 | `valueFrom` |
 |---|---|
 | `DB_PASSWORD` | `<RDS 관리 시크릿 ARN>:password::` |
-| `AUTH_ACCESS_TOKEN_SECRET_KEY` | `<앱 시크릿 ARN>:access_token_key::` |
-| `AUTH_REFRESH_TOKEN_SECRET_KEY` | `<앱 시크릿 ARN>:refresh_token_key::` |
 | `BACKOFFICE_PASSWORD` | `<앱 시크릿 ARN>:backoffice_password::` |
+| `SUPABASE_SECRET_KEY` | `<앱 시크릿 ARN>:supabase_secret_key::` |
+| `OAUTH_CREDENTIALS_KEY` | `<앱 시크릿 ARN>:oauth_credentials_key::` |
+| `GOOGLE_CLIENT_SECRET` | `<앱 시크릿 ARN>:google_client_secret::` |
+| `APPLE_PRIVATE_KEY` | `<앱 시크릿 ARN>:apple_private_key::` |
+| `KAKAO_ADMIN_KEY` | `<앱 시크릿 ARN>:kakao_admin_key::` |
+| `FCM_SERVICE_ACCOUNT_JSON` | `<앱 시크릿 ARN>:fcm_service_account_json::` |
+
+### task role 권한
+
+| 역할 | 대상 | 액션 |
+|---|---|---|
+| api | 데이터 버킷 객체 | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:PutObjectTagging` |
+| api | `notification`, `withdrawal` 큐 | `sqs:SendMessage` |
+| api | KVS 채널 `jn-buddybird-<env>-*` | 시그널링 채널 생성, 조회, 삭제와 `ConnectAsMaster`, `ConnectAsViewer`, `GetIceServerConfig` |
+| consumer | `upload-confirmation`, `judgment-result`, `notification`, `withdrawal`, `periodic-command` 큐 | 수신, 삭제, visibility 변경, 속성 조회 |
+| consumer | `parrot-sound-detection`, `mimicry-judgment`, `notification`, `withdrawal` 큐 | `sqs:SendMessage` |
+| consumer | 데이터 버킷 객체 | api와 같음 |
+
+dev는 api와 consumer가 task 하나에서 실행되므로 api task role이 consumer 권한도 갖습니다.
+
+### consumer
+
+consumer는 api와 같은 이미지를 `python -m app.consumer` 명령으로 실행하고 HTTP 요청을 받지 않습니다.
+환경 변수와 시크릿은 api 컨테이너와 같습니다.
+
+| 항목 | prod | dev |
+|---|---|---|
+| 실행 위치 | 별도 ECS 서비스 `jn-buddybird-api-prod-consumer` | api task의 두 번째 컨테이너 |
+| capacity provider | `FARGATE` | api와 같음 |
+| task role | `jn-buddybird-api-prod-consumer-task` | api task role |
+| 로그 | `/ecs/jn-buddybird-api-prod-consumer` | `/ecs/jn-buddybird-api-dev`의 `consumer/` 스트림 |
+| ALB 연결 | X | X |
+
+dev의 consumer 컨테이너는 `essential`이 아니므로 종료돼도 api 컨테이너는 계속 실행됩니다.
+ECS는 종료된 consumer 컨테이너를 다시 시작하지 않으므로 dev api를 재배포해야 consumer가 다시 실행됩니다.
 
 ## 메시지 큐
 
@@ -562,6 +608,13 @@ prod api는 최초 1회 아래 명령으로 task를 2개로 설정합니다.
 aws ecs update-service --cluster jn-cluster --service jn-buddybird-api-prod --desired-count 2
 ```
 
+prod consumer 서비스는 task 0개로 만들어집니다.
+서비스가 `bootstrap` 태그 이미지로 생성되므로 api 이미지를 배포한 뒤 아래 명령으로 시작합니다.
+
+```bash
+aws ecs update-service --cluster jn-cluster --service jn-buddybird-api-prod-consumer --desired-count 1
+```
+
 이 스택에서 컨테이너 정의를 변경한 경우 `pulumi up` 후 서비스를 수동으로 갱신합니다.
 
 ```bash
@@ -574,7 +627,10 @@ aws ecs update-service --cluster jn-cluster --service <서비스> \
 | 브랜치 | 동작 |
 |---|---|
 | `dev` | 이미지 빌드와 ECR 푸시 → 마이그레이션 task 실행 → dev 서비스 갱신 |
-| `main` | 마이그레이션 task 실행 → prod 서비스 갱신 |
+| `main` | 마이그레이션 task 실행 → prod 서비스 갱신 → prod consumer 서비스 갱신 |
+
+워크플로는 task definition의 모든 컨테이너 이미지를 교체하므로 dev의 consumer 컨테이너도 api와 같은 버전으로 배포됩니다.
+마이그레이션은 `api` 컨테이너만 담은 `<서비스>-migration` task definition으로 실행합니다.
 
 ### backoffice frontend 배포
 
@@ -598,15 +654,25 @@ dev 스택에는 backoffice frontend 서비스가 없습니다.
 
 ```bash
 pulumi config set --stack <스택> --secret cloudflare:apiToken <토큰>
-pulumi config set --stack <스택> --secret authAccessTokenKey "$(openssl rand -base64 32)"
-pulumi config set --stack <스택> --secret authRefreshTokenKey "$(openssl rand -base64 32)"
 pulumi config set --stack <스택> --secret backofficePassword <비밀번호>
 pulumi config set --stack <스택> --secret readonlyDbPassword <비밀번호>
+pulumi config set --stack <스택> supabaseUrl <Supabase 프로젝트 URL>
+pulumi config set --stack <스택> supabasePublishableKey <publishable key>
+pulumi config set --stack <스택> googleClientId <Google OAuth 클라이언트 ID>
+pulumi config set --stack <스택> appleClientIds '["<Apple 앱 ID>"]'
+pulumi config set --stack <스택> appleTeamId <Apple 팀 ID>
+pulumi config set --stack <스택> appleKeyId <Apple 로그인 키 ID>
+pulumi config set --stack <스택> --secret supabaseSecretKey <secret key>
+pulumi config set --stack <스택> --secret oauthCredentialsKey <Fernet 키>
+pulumi config set --stack <스택> --secret googleClientSecret <클라이언트 secret>
+pulumi config set --stack <스택> --secret kakaoAdminKey <admin 키>
+pulumi config set --stack <스택> --secret applePrivateKey < <p8 파일>
+pulumi config set --stack <스택> --secret fcmServiceAccountJson < <서비스 계정 JSON 파일>
 ```
 
-`authAccessTokenKey`와 `authRefreshTokenKey`는 스택마다 다른 값으로 설정합니다.
-JWT 서명 키가 같으면 dev에서 발급한 토큰이 prod에서도 유효합니다.
+여러 줄인 `applePrivateKey`와 `fcmServiceAccountJson`은 값을 stdin으로 넘깁니다.
 `backofficePassword`와 `readonlyDbPassword`는 현재 `dev`와 `prod` 스택이 같은 값을 사용합니다.
+Supabase 프로젝트, Google OAuth 클라이언트, Apple 앱 ID와 키는 스택마다 다른 값을 사용합니다.
 
 secret을 변경한 뒤에는 해당 스택의 api를 재배포해야 합니다.
 ECS는 task를 시작할 때 시크릿을 읽기 때문에 재배포 전까지 이전 값으로 동작합니다.

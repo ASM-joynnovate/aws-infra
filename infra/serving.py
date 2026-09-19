@@ -8,6 +8,7 @@ import pulumi_cloudflare as cloudflare
 CLOUDFRONT_CERTIFICATE_REGION = "us-east-1"
 ALB_TLS_POLICY = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 ACM_VALIDATION_RECORD_TTL = 60
+CLUSTER_CAPACITY_PROVIDERS = ["FARGATE", "FARGATE_SPOT"]
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,13 @@ class Serving(pulumi.ComponentResource):
         self.cluster = aws.ecs.Cluster(
             f"{name}-cluster",
             name=f"{name}-cluster",
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        aws.ecs.ClusterCapacityProviders(
+            f"{name}-cluster-capacity-providers",
+            cluster_name=self.cluster.name,
+            capacity_providers=CLUSTER_CAPACITY_PROVIDERS,
             opts=pulumi.ResourceOptions(parent=self),
         )
 

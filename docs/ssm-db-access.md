@@ -40,6 +40,10 @@ aws ssm start-session \
 
 `Waiting for connections...`가 출력되면 별도 터미널을 엽니다.
 
+bastion은 Spot 인스턴스입니다.
+AWS가 인스턴스를 회수하면 세션이 끊기고 인스턴스는 stop 상태가 됩니다.
+용량이 돌아오면 같은 instance ID로 다시 시작되므로 `TargetNotConnected` 오류가 나면 몇 분 뒤 다시 시도합니다.
+
 ### 4. readonly 사용자로 접속
 
 ```bash

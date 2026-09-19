@@ -90,7 +90,7 @@ class Network(pulumi.ComponentResource):
         aws.ec2.FlowLog(
             f"{name}-flow-log",
             vpc_id=self.vpc.id,
-            traffic_type="ALL",
+            traffic_type="REJECT",
             log_destination_type="s3",
             log_destination=pulumi.Output.format(
                 "{0}/{1}/", args.log_bucket_arn, args.log_prefix

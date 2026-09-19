@@ -66,6 +66,7 @@
 | AMI | Amazon Linux 2023 ARM64 |
 | AMI 갱신 | 새 AMI가 게시돼도 인스턴스 유지, 교체는 `pulumi up --replace`로 실행 |
 | 인스턴스 타입 | t4g.nano |
+| 구매 옵션 | Spot, persistent 요청, 회수 시 stop |
 | 서브넷 | public 서브넷 첫 번째 |
 | 보안 그룹 | `jn-ssm` |
 | IAM 역할 | `jn-ssm` (`AmazonSSMManagedInstanceCore`) |
@@ -101,6 +102,7 @@
 |---|---|
 | 이름 | `jn-cluster` |
 | 타입 | Fargate |
+| capacity provider | `FARGATE`, `FARGATE_SPOT` |
 
 ## 로그
 
@@ -108,6 +110,7 @@
 |---|---|
 | ALB access log prefix | `alb` |
 | VPC flow log prefix | `vpc-flow-log` |
+| VPC flow log 대상 | 거부된 트래픽 |
 | 보존 기간 | 30일 |
 | 버킷 암호화 | SSE-S3 |
 
@@ -115,7 +118,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 한도 | 월 120 USD |
+| 한도 | 월 200 USD |
 | 알림 | 실제 지출 50%, 75%, 90% |
 | 수신 | 팀 이메일 |
 

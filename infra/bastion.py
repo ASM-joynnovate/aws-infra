@@ -75,6 +75,13 @@ class Bastion(pulumi.ComponentResource):
             subnet_id=args.subnet_id,
             vpc_security_group_ids=[args.security_group_id],
             iam_instance_profile=profile.name,
+            instance_market_options=aws.ec2.InstanceInstanceMarketOptionsArgs(
+                market_type="spot",
+                spot_options=aws.ec2.InstanceInstanceMarketOptionsSpotOptionsArgs(
+                    spot_instance_type="persistent",
+                    instance_interruption_behavior="stop",
+                ),
+            ),
             metadata_options=aws.ec2.InstanceMetadataOptionsArgs(
                 http_tokens="required",
                 http_endpoint="enabled",

@@ -28,6 +28,10 @@ DB_NAME = "buddybird"
 DB_USER = "buddybird"
 
 
+def data_bucket_name(bucket_env: str, account_id: str, region: str) -> str:
+    return f"{DATA_BUCKET_PREFIX}-data-{bucket_env}-{account_id}-{region}"
+
+
 def harden_bucket(
     name: str, bucket: aws.s3.Bucket, opts: pulumi.ResourceOptions
 ) -> None:

@@ -1,5 +1,5 @@
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import pulumi
@@ -11,13 +11,22 @@ from pulumi_aws.iam import (
 )
 
 from data import (
-    DATA_BUCKET_PREFIX,
     Database,
     DatabaseArgs,
     DataBucket,
     DataBucketArgs,
+    data_bucket_name,
 )
 from dns import cname_record
+from messaging import (
+    JUDGMENT_RESULT,
+    MIMICRY_JUDGMENT,
+    NOTIFICATION,
+    PARROT_SOUND_DETECTION,
+    PERIODIC_COMMAND,
+    UPLOAD_CONFIRMATION,
+    WITHDRAWAL,
+)
 
 API_CONTAINER_PORT = 8000
 WEB_SERVICE_PORT = 3000
@@ -37,11 +46,53 @@ CAPACITY_STRATEGIES = {
     "on-demand-with-spot": [("FARGATE", 1, 0), ("FARGATE_SPOT", 0, 1)],
 }
 
-AUTH_ALGORITHM = "HS256"
-AUTH_ACCESS_TOKEN_EXPIRE_MINUTES = 10080
-AUTH_REFRESH_TOKEN_EXPIRE_MINUTES = 20160
-
 S3_OBJECT_ACTIONS = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+S3_TAGGING_ACTIONS = ["s3:PutObjectTagging"]
+
+MERGED_TASK_MEMORY = "1024"
+CONSUMER_CONTAINER_NAME = "consumer"
+CONSUMER_COMMAND = ["python", "-m", "app.consumer"]
+
+API_SEND_QUEUES = [NOTIFICATION, WITHDRAWAL]
+CONSUMER_RECEIVE_QUEUES = [
+    UPLOAD_CONFIRMATION,
+    JUDGMENT_RESULT,
+    NOTIFICATION,
+    WITHDRAWAL,
+    PERIODIC_COMMAND,
+]
+CONSUMER_SEND_QUEUES = [
+    PARROT_SOUND_DETECTION,
+    MIMICRY_JUDGMENT,
+    NOTIFICATION,
+    WITHDRAWAL,
+]
+SQS_RECEIVE_ACTIONS = [
+    "sqs:ReceiveMessage",
+    "sqs:DeleteMessage",
+    "sqs:ChangeMessageVisibility",
+    "sqs:GetQueueAttributes",
+]
+
+KVS_CHANNEL_ACTIONS = [
+    "kinesisvideo:CreateSignalingChannel",
+    "kinesisvideo:DescribeSignalingChannel",
+    "kinesisvideo:GetSignalingChannelEndpoint",
+    "kinesisvideo:GetIceServerConfig",
+    "kinesisvideo:ConnectAsMaster",
+    "kinesisvideo:ConnectAsViewer",
+    "kinesisvideo:DeleteSignalingChannel",
+]
+
+APP_SECRET_ENV_VARS = {
+    "backoffice_password": "BACKOFFICE_PASSWORD",
+    "supabase_secret_key": "SUPABASE_SECRET_KEY",
+    "oauth_credentials_key": "OAUTH_CREDENTIALS_KEY",
+    "google_client_secret": "GOOGLE_CLIENT_SECRET",
+    "apple_private_key": "APPLE_PRIVATE_KEY",
+    "kakao_admin_key": "KAKAO_ADMIN_KEY",
+    "fcm_service_account_json": "FCM_SERVICE_ACCOUNT_JSON",
+}
 
 ROTATION_REDEPLOY_TIMEOUT_SECONDS = 10
 ROTATION_REDEPLOY_CODE = """\
@@ -53,11 +104,12 @@ ecs = boto3.client("ecs")
 
 
 def handler(event, context):
-    ecs.update_service(
-        cluster=os.environ["CLUSTER"],
-        service=os.environ["SERVICE"],
-        forceNewDeployment=True,
-    )
+    for service in os.environ["SERVICES"].split(","):
+        ecs.update_service(
+            cluster=os.environ["CLUSTER"],
+            service=service,
+            forceNewDeployment=True,
+        )
 """
 
 
@@ -112,6 +164,91 @@ def execution_role(
     return role
 
 
+def fargate_task_definition(
+    name: str,
+    *,
+    family: str,
+    memory: str,
+    container: pulumi.Output[str],
+    execution_role_arn: pulumi.Input[str],
+    task_role_arn: pulumi.Input[str] | None,
+    opts: pulumi.ResourceOptions,
+) -> aws.ecs.TaskDefinition:
+    return aws.ecs.TaskDefinition(
+        f"{name}-task-definition",
+        family=family,
+        cpu=TASK_CPU,
+        memory=memory,
+        network_mode="awsvpc",
+        requires_compatibilities=["FARGATE"],
+        runtime_platform=aws.ecs.TaskDefinitionRuntimePlatformArgs(
+            cpu_architecture="ARM64",
+            operating_system_family="LINUX",
+        ),
+        execution_role_arn=execution_role_arn,
+        task_role_arn=task_role_arn,
+        container_definitions=container,
+        opts=opts,
+    )
+
+
+def capacity_provider_strategies(
+    capacity: str,
+) -> list[aws.ecs.ServiceCapacityProviderStrategyArgs]:
+    return [
+        aws.ecs.ServiceCapacityProviderStrategyArgs(
+            capacity_provider=provider, base=base, weight=weight
+        )
+        for provider, base, weight in CAPACITY_STRATEGIES[capacity]
+    ]
+
+
+def background_service(
+    name: str,
+    *,
+    service_name: str,
+    container: pulumi.Output[str],
+    execution_role_arn: pulumi.Input[str],
+    task_role_arn: pulumi.Input[str],
+    subnet_ids: pulumi.Input[Sequence[pulumi.Input[str]]],
+    task_security_group_id: pulumi.Input[str],
+    cluster_arn: pulumi.Input[str],
+    capacity: str = DEFAULT_CAPACITY,
+    opts: pulumi.ResourceOptions,
+) -> aws.ecs.Service:
+    task_definition = fargate_task_definition(
+        name,
+        family=service_name,
+        memory=TASK_MEMORY,
+        container=container,
+        execution_role_arn=execution_role_arn,
+        task_role_arn=task_role_arn,
+        opts=opts,
+    )
+
+    return aws.ecs.Service(
+        f"{name}-service",
+        name=service_name,
+        cluster=cluster_arn,
+        task_definition=task_definition.arn,
+        desired_count=0,
+        force_new_deployment=True,
+        capacity_provider_strategies=capacity_provider_strategies(capacity),
+        deployment_circuit_breaker=aws.ecs.ServiceDeploymentCircuitBreakerArgs(
+            enable=True, rollback=True
+        ),
+        network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
+            subnets=subnet_ids,
+            security_groups=[task_security_group_id],
+            assign_public_ip=True,
+        ),
+        opts=pulumi.ResourceOptions.merge(
+            opts,
+            pulumi.ResourceOptions(ignore_changes=["taskDefinition", "desiredCount"]),
+        ),
+    )
+
+
 def fargate_service(
     name: str,
     *,
@@ -131,26 +268,20 @@ def fargate_service(
     priority: int,
     path_pattern: str | None = None,
     capacity: str = DEFAULT_CAPACITY,
+    memory: str = TASK_MEMORY,
     opts: pulumi.ResourceOptions,
 ) -> aws.ecs.Service:
     replaceable = pulumi.ResourceOptions.merge(
         opts, pulumi.ResourceOptions(delete_before_replace=True)
     )
 
-    task_definition = aws.ecs.TaskDefinition(
-        f"{name}-task-definition",
+    task_definition = fargate_task_definition(
+        name,
         family=service_name,
-        cpu=TASK_CPU,
-        memory=TASK_MEMORY,
-        network_mode="awsvpc",
-        requires_compatibilities=["FARGATE"],
-        runtime_platform=aws.ecs.TaskDefinitionRuntimePlatformArgs(
-            cpu_architecture="ARM64",
-            operating_system_family="LINUX",
-        ),
+        memory=memory,
+        container=container,
         execution_role_arn=execution_role_arn,
         task_role_arn=task_role_arn,
-        container_definitions=container,
         opts=opts,
     )
 
@@ -207,12 +338,7 @@ def fargate_service(
         task_definition=task_definition.arn,
         desired_count=1,
         force_new_deployment=True,
-        capacity_provider_strategies=[
-            aws.ecs.ServiceCapacityProviderStrategyArgs(
-                capacity_provider=provider, base=base, weight=weight
-            )
-            for provider, base, weight in CAPACITY_STRATEGIES[capacity]
-        ],
+        capacity_provider_strategies=capacity_provider_strategies(capacity),
         health_check_grace_period_seconds=HEALTH_GRACE_SECONDS,
         deployment_circuit_breaker=aws.ecs.ServiceDeploymentCircuitBreakerArgs(
             enable=True, rollback=True
@@ -327,6 +453,68 @@ class WebService(pulumi.ComponentResource):
         self.register_outputs({"service": self.service})
 
 
+def _queue_url_variable(suffix: str) -> str:
+    return f"SQS_{suffix.upper().replace('-', '_')}_QUEUE_URL"
+
+
+def _container(
+    args: ApiArgs,
+    a: dict,
+    *,
+    container_name: str,
+    log_group_name: str,
+    port: int | None = None,
+    command: Sequence[str] | None = None,
+    essential: bool = True,
+) -> dict:
+    definition = {
+        "name": container_name,
+        "image": a["image"],
+        "essential": essential,
+        "environment": [
+            {"name": "ENV", "value": args.env},
+            {"name": "DB_HOST", "value": a["db_host"]},
+            {"name": "DB_NAME", "value": a["db_name"]},
+            {"name": "DB_USER", "value": a["db_user"]},
+            {"name": "S3_BUCKET_NAME", "value": a["bucket_name"]},
+            {"name": "FRONTEND_CORS_ORIGIN", "value": args.cors_origin},
+            *[
+                {"name": variable, "value": value}
+                for variable, value in args.app_environment.items()
+            ],
+            *[
+                {"name": _queue_url_variable(suffix), "value": url}
+                for suffix, url in a["queue_urls"].items()
+            ],
+        ],
+        "secrets": [
+            {"name": "DB_PASSWORD", "valueFrom": f"{a['db_secret']}:password::"},
+            *[
+                {
+                    "name": variable,
+                    "valueFrom": f"{a['app_secret']}:{key}::",
+                }
+                for key, variable in APP_SECRET_ENV_VARS.items()
+            ],
+        ],
+        "logConfiguration": {
+            "logDriver": "awslogs",
+            "options": {
+                "awslogs-group": log_group_name,
+                "awslogs-region": args.region,
+                "awslogs-stream-prefix": container_name,
+            },
+        },
+    }
+    if port is not None:
+        definition["portMappings"] = [{"containerPort": port, "protocol": "tcp"}]
+    if command is not None:
+        definition["command"] = list(command)
+    if not essential:
+        definition["restartPolicy"] = {"enabled": True}
+    return definition
+
+
 @dataclass(frozen=True)
 class ApiArgs:
     env: str
@@ -341,18 +529,20 @@ class ApiArgs:
     deletion_protection: bool
     subnet_group_name: pulumi.Input[str]
     db_security_group_id: pulumi.Input[str]
-    access_token_key: pulumi.Input[str]
-    refresh_token_key: pulumi.Input[str]
-    backoffice_password: pulumi.Input[str]
+    app_secrets: Mapping[str, pulumi.Input[str]]
+    app_environment: Mapping[str, str]
     readonly_db_password: pulumi.Input[str]
     vpc_id: pulumi.Input[str]
     subnet_ids: pulumi.Input[Sequence[pulumi.Input[str]]]
     task_security_group_id: pulumi.Input[str]
     cluster_arn: pulumi.Input[str]
     listener_arn: pulumi.Input[str]
+    name_prefix: str
+    queues: Mapping[str, aws.sqs.Queue]
     dns_target: pulumi.Input[str] | None = None
     local_data_cors_origins: Sequence[str] | None = None
     capacity: str = DEFAULT_CAPACITY
+    consumer_separate: bool = False
 
 
 class Api(pulumi.ComponentResource):
@@ -369,7 +559,7 @@ class Api(pulumi.ComponentResource):
         self.data = DataBucket(
             f"{name}-data",
             DataBucketArgs(
-                bucket_name=self._data_bucket_name(env, args),
+                bucket_name=data_bucket_name(env, args.account_id, args.region),
                 cors_allowed_origins=args.data_cors_origins,
             ),
             child,
@@ -380,7 +570,7 @@ class Api(pulumi.ComponentResource):
             self.local_data = DataBucket(
                 f"{name}-local-data",
                 DataBucketArgs(
-                    bucket_name=self._data_bucket_name("local", args),
+                    bucket_name=data_bucket_name("local", args.account_id, args.region),
                     cors_allowed_origins=args.local_data_cors_origins,
                 ),
                 child,
@@ -404,7 +594,7 @@ class Api(pulumi.ComponentResource):
         app_secret = aws.secretsmanager.Secret(
             f"{name}-app-secret",
             name=args.service_name,
-            description=f"buddybird-api {env} token signing keys",
+            description=f"buddybird-api {env} app secrets",
             recovery_window_in_days=0,
             opts=pulumi.ResourceOptions(parent=self),
         )
@@ -413,11 +603,7 @@ class Api(pulumi.ComponentResource):
             f"{name}-app-secret-version",
             secret_id=app_secret.id,
             secret_string=pulumi.Output.json_dumps(
-                {
-                    "access_token_key": args.access_token_key,
-                    "refresh_token_key": args.refresh_token_key,
-                    "backoffice_password": args.backoffice_password,
-                }
+                {key: args.app_secrets[key] for key in APP_SECRET_ENV_VARS}
             ),
             opts=pulumi.ResourceOptions(parent=self),
         )
@@ -459,6 +645,8 @@ class Api(pulumi.ComponentResource):
             ),
         )
 
+        object_arn = pulumi.Output.format("{0}/*", self.data.bucket.arn)
+
         aws.iam.RolePolicy(
             f"{name}-task-role-s3",
             role=task.name,
@@ -466,8 +654,8 @@ class Api(pulumi.ComponentResource):
                 statements=[
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
-                        actions=S3_OBJECT_ACTIONS,
-                        resources=[pulumi.Output.format("{0}/*", self.data.bucket.arn)],
+                        actions=[*S3_OBJECT_ACTIONS, *S3_TAGGING_ACTIONS],
+                        resources=[object_arn],
                     ),
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
@@ -479,76 +667,131 @@ class Api(pulumi.ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        container = pulumi.Output.all(
+        aws.iam.RolePolicy(
+            f"{name}-task-role-sqs",
+            role=task.name,
+            policy=aws.iam.get_policy_document_output(
+                statements=[
+                    GetPolicyDocumentStatementArgs(
+                        effect=PolicyStatementEffect.ALLOW,
+                        actions=["sqs:SendMessage"],
+                        resources=[args.queues[q].arn for q in API_SEND_QUEUES],
+                    )
+                ]
+            ).json,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        aws.iam.RolePolicy(
+            f"{name}-task-role-kvs",
+            role=task.name,
+            policy=aws.iam.get_policy_document_output(
+                statements=[
+                    GetPolicyDocumentStatementArgs(
+                        effect=PolicyStatementEffect.ALLOW,
+                        actions=KVS_CHANNEL_ACTIONS,
+                        resources=[
+                            (
+                                f"arn:aws:kinesisvideo:{args.region}:{args.account_id}"
+                                f":channel/{args.name_prefix}-*/*"
+                            )
+                        ],
+                    )
+                ]
+            ).json,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        consumer_statements = [
+            GetPolicyDocumentStatementArgs(
+                effect=PolicyStatementEffect.ALLOW,
+                actions=SQS_RECEIVE_ACTIONS,
+                resources=[args.queues[q].arn for q in CONSUMER_RECEIVE_QUEUES],
+            ),
+            GetPolicyDocumentStatementArgs(
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["sqs:SendMessage"],
+                resources=[args.queues[q].arn for q in CONSUMER_SEND_QUEUES],
+            ),
+            GetPolicyDocumentStatementArgs(
+                effect=PolicyStatementEffect.ALLOW,
+                actions=[*S3_OBJECT_ACTIONS, *S3_TAGGING_ACTIONS],
+                resources=[object_arn],
+            ),
+            GetPolicyDocumentStatementArgs(
+                effect=PolicyStatementEffect.ALLOW,
+                actions=["s3:ListBucket"],
+                resources=[self.data.bucket.arn],
+            ),
+        ]
+
+        consumer_logs = logs
+        consumer_task = task
+        if args.consumer_separate:
+            consumer_logs = log_group(
+                f"{name}-consumer",
+                log_group_name=f"/ecs/{args.service_name}-consumer",
+                opts=pulumi.ResourceOptions(parent=self),
+            )
+            consumer_task = aws.iam.Role(
+                f"{name}-consumer-task-role",
+                name=f"{args.service_name}-consumer-task",
+                assume_role_policy=_assume_role_policy(),
+                opts=pulumi.ResourceOptions.merge(
+                    pulumi.ResourceOptions(parent=self),
+                    pulumi.ResourceOptions(delete_before_replace=True),
+                ),
+            )
+
+        aws.iam.RolePolicy(
+            f"{name}-consumer-policy",
+            role=consumer_task.name,
+            policy=aws.iam.get_policy_document_output(
+                statements=consumer_statements
+            ).json,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        values = pulumi.Output.all(
             image=args.image,
             log_group=logs.name,
+            consumer_log_group=consumer_logs.name,
             db_host=self.database.instance.address,
             db_name=self.database.instance.db_name,
             db_user=self.database.instance.username,
             bucket_name=self.data.bucket.id,
             db_secret=db_secret_arn,
             app_secret=app_secret.arn,
-        ).apply(
-            lambda a: json.dumps(
-                [
-                    {
-                        "name": "api",
-                        "image": a["image"],
-                        "essential": True,
-                        "portMappings": [
-                            {"containerPort": API_CONTAINER_PORT, "protocol": "tcp"}
-                        ],
-                        "environment": [
-                            {"name": "BUDDYBIRD_ENV", "value": args.env},
-                            {"name": "DB_HOST", "value": a["db_host"]},
-                            {"name": "DB_NAME", "value": a["db_name"]},
-                            {"name": "DB_USER", "value": a["db_user"]},
-                            {"name": "S3_BUCKET_NAME", "value": a["bucket_name"]},
-                            {
-                                "name": "S3_BUCKET_DOMAIN",
-                                "value": f"https://{a['bucket_name']}.s3.{args.region}.amazonaws.com",
-                            },
-                            {"name": "AUTH_ALGORITHM", "value": AUTH_ALGORITHM},
-                            {
-                                "name": "AUTH_ACCESS_TOKEN_EXPIRE_MINUTES",
-                                "value": str(AUTH_ACCESS_TOKEN_EXPIRE_MINUTES),
-                            },
-                            {
-                                "name": "AUTH_REFRESH_TOKEN_EXPIRE_MINUTES",
-                                "value": str(AUTH_REFRESH_TOKEN_EXPIRE_MINUTES),
-                            },
-                            {"name": "FRONTEND_CORS_ORIGIN", "value": args.cors_origin},
-                        ],
-                        "secrets": [
-                            {
-                                "name": "DB_PASSWORD",
-                                "valueFrom": f"{a['db_secret']}:password::",
-                            },
-                            {
-                                "name": "AUTH_ACCESS_TOKEN_SECRET_KEY",
-                                "valueFrom": f"{a['app_secret']}:access_token_key::",
-                            },
-                            {
-                                "name": "AUTH_REFRESH_TOKEN_SECRET_KEY",
-                                "valueFrom": f"{a['app_secret']}:refresh_token_key::",
-                            },
-                            {
-                                "name": "BACKOFFICE_PASSWORD",
-                                "valueFrom": f"{a['app_secret']}:backoffice_password::",
-                            },
-                        ],
-                        "logConfiguration": {
-                            "logDriver": "awslogs",
-                            "options": {
-                                "awslogs-group": a["log_group"],
-                                "awslogs-region": args.region,
-                                "awslogs-stream-prefix": "api",
-                            },
-                        },
-                    }
-                ]
-            )
+            queue_urls={suffix: queue.url for suffix, queue in args.queues.items()},
         )
+
+        def api_container(a: dict) -> dict:
+            return _container(
+                args,
+                a,
+                container_name="api",
+                log_group_name=a["log_group"],
+                port=API_CONTAINER_PORT,
+            )
+
+        def consumer_container(a: dict, *, essential: bool) -> dict:
+            return _container(
+                args,
+                a,
+                container_name=CONSUMER_CONTAINER_NAME,
+                log_group_name=a["consumer_log_group"],
+                command=CONSUMER_COMMAND,
+                essential=essential,
+            )
+
+        if args.consumer_separate:
+            container = values.apply(lambda a: json.dumps([api_container(a)]))
+        else:
+            container = values.apply(
+                lambda a: json.dumps(
+                    [api_container(a), consumer_container(a, essential=False)]
+                )
+            )
 
         self.service = fargate_service(
             name,
@@ -568,10 +811,28 @@ class Api(pulumi.ComponentResource):
             priority=args.priority,
             path_pattern=API_PATH_PATTERN,
             capacity=args.capacity,
+            memory=TASK_MEMORY if args.consumer_separate else MERGED_TASK_MEMORY,
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        self._rotation_redeploy(name, args, db_secret_arn)
+        services = [self.service]
+        if args.consumer_separate:
+            self.consumer_service = background_service(
+                f"{name}-consumer",
+                service_name=f"{args.service_name}-consumer",
+                container=values.apply(
+                    lambda a: json.dumps([consumer_container(a, essential=True)])
+                ),
+                execution_role_arn=execution.arn,
+                task_role_arn=consumer_task.arn,
+                subnet_ids=args.subnet_ids,
+                task_security_group_id=args.task_security_group_id,
+                cluster_arn=args.cluster_arn,
+                opts=pulumi.ResourceOptions(parent=self),
+            )
+            services.append(self.consumer_service)
+
+        self._rotation_redeploy(name, args, db_secret_arn, services)
 
         if args.dns_target is not None:
             cname_record(
@@ -590,12 +851,12 @@ class Api(pulumi.ComponentResource):
             }
         )
 
-    @staticmethod
-    def _data_bucket_name(bucket_env: str, args: ApiArgs) -> str:
-        return f"{DATA_BUCKET_PREFIX}-data-{bucket_env}-{args.account_id}-{args.region}"
-
     def _rotation_redeploy(
-        self, name: str, args: ApiArgs, secret_arn: pulumi.Input[str]
+        self,
+        name: str,
+        args: ApiArgs,
+        secret_arn: pulumi.Input[str],
+        services: Sequence[aws.ecs.Service],
     ) -> None:
         child = pulumi.ResourceOptions(parent=self)
         replaceable = pulumi.ResourceOptions.merge(
@@ -638,7 +899,7 @@ class Api(pulumi.ComponentResource):
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
                         actions=["ecs:UpdateService"],
-                        resources=[self.service.id],
+                        resources=[service.id for service in services],
                     )
                 ]
             ).json,
@@ -656,7 +917,12 @@ class Api(pulumi.ComponentResource):
                 {"index.py": pulumi.StringAsset(ROTATION_REDEPLOY_CODE)}
             ),
             environment=aws.lambda_.FunctionEnvironmentArgs(
-                variables={"CLUSTER": args.cluster_arn, "SERVICE": self.service.name}
+                variables={
+                    "CLUSTER": args.cluster_arn,
+                    "SERVICES": pulumi.Output.all(
+                        *[service.name for service in services]
+                    ).apply(",".join),
+                }
             ),
             opts=replaceable,
         )

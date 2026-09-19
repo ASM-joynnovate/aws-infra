@@ -291,8 +291,8 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | `mimicry-judgment` | 2단계 판정 worker | 명령 `sound.judge_mimicry` | consumer | 300초 |
 | `judgment-result` | consumer | 이벤트 `sound.classified`, `sound.mimicry_judged` | 판정 worker | 30초 |
 | `notification` | consumer | 명령 `notification.send` | api, consumer | 30초 |
-| `withdrawal` | consumer | 명령 `withdrawal.process`, `withdrawal.dispatch` | api, 1분 주기 스케줄 | 300초 |
-| `heartbeat-check` | consumer | 명령 `session.check_heartbeats` | 1분 주기 스케줄 | 30초 |
+| `withdrawal` | consumer | 명령 `withdrawal.process` | api, consumer | 300초 |
+| `periodic-command` | consumer | 명령 `withdrawal.dispatch`, `session.check_heartbeats` | 1분 주기 스케줄 | 30초 |
 
 판정 큐 두 개의 300초는 초기값이며 모델의 처리 시간이 나오면 조정합니다.
 메시지 type은 `<대상>.<동사>` 형태이고 명령은 명령형으로, 이벤트는 과거형으로 짓습니다.
@@ -300,6 +300,7 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | 항목 | 값 |
 |---|---|
 | `maxReceiveCount` | 5 |
+| 큐 보존 기간 | `periodic-command`는 60초, 나머지는 SQS 기본값인 4일 |
 | DLQ 보존 기간 | 14일 |
 | DLQ 알람 | 메시지 수가 0보다 크면 `jn-buddybird-<env>-alarms` topic으로 팀 이메일 발송 |
 | 업로드 이벤트 rule | `jn-buddybird-<env>-upload-created` |

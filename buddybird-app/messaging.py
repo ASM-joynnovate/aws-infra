@@ -14,7 +14,7 @@ from schedule import scheduler_assume_role_policy
 
 UPLOAD_CONFIRMATION = "upload-confirmation"
 WITHDRAWAL = "withdrawal"
-HEARTBEAT_CHECK = "heartbeat-check"
+PERIODIC_COMMAND = "periodic-command"
 
 QUEUE_VISIBILITY_TIMEOUTS = {
     UPLOAD_CONFIRMATION: 60,
@@ -23,8 +23,10 @@ QUEUE_VISIBILITY_TIMEOUTS = {
     "judgment-result": 30,
     "notification": 30,
     WITHDRAWAL: 300,
-    HEARTBEAT_CHECK: 30,
+    PERIODIC_COMMAND: 30,
 }
+
+QUEUE_RETENTION_SECONDS = {PERIODIC_COMMAND: 60}
 
 MAX_RECEIVE_COUNT = 5
 DLQ_RETENTION_SECONDS = 14 * 24 * 60 * 60
@@ -37,10 +39,10 @@ UPLOAD_KEY_PATTERNS = [
 ]
 
 TICK_SCHEDULE = "rate(1 minute)"
-TICK_MESSAGES = {
-    WITHDRAWAL: ("withdrawal-dispatch", "withdrawal.dispatch"),
-    HEARTBEAT_CHECK: ("heartbeat-check", "session.check_heartbeats"),
-}
+TICK_MESSAGES = [
+    ("withdrawal-dispatch", "withdrawal.dispatch"),
+    ("heartbeat-check", "session.check_heartbeats"),
+]
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,7 @@ class Messaging(pulumi.ComponentResource):
                 f"{name}-{suffix}",
                 name=f"{args.name_prefix}-{suffix}",
                 visibility_timeout_seconds=visibility_timeout,
+                message_retention_seconds=QUEUE_RETENTION_SECONDS.get(suffix),
                 redrive_policy=pulumi.Output.json_dumps(
                     {
                         "deadLetterTargetArn": dead_letter_queue.arn,
@@ -176,7 +179,7 @@ class Messaging(pulumi.ComponentResource):
 
     def _ticks(self, name: str, args: MessagingArgs) -> None:
         child = pulumi.ResourceOptions(parent=self)
-        tick_queues = [self.queues[suffix] for suffix in TICK_MESSAGES]
+        queue = self.queues[PERIODIC_COMMAND]
 
         role = aws.iam.Role(
             f"{name}-scheduler-role",
@@ -195,14 +198,14 @@ class Messaging(pulumi.ComponentResource):
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
                         actions=["sqs:SendMessage"],
-                        resources=[queue.arn for queue in tick_queues],
+                        resources=[queue.arn],
                     )
                 ]
             ).json,
             opts=child,
         )
 
-        for suffix, (schedule_name, message_type) in TICK_MESSAGES.items():
+        for schedule_name, message_type in TICK_MESSAGES:
             aws.scheduler.Schedule(
                 f"{name}-{schedule_name}-schedule",
                 name=f"{args.name_prefix}-{schedule_name}",
@@ -211,7 +214,7 @@ class Messaging(pulumi.ComponentResource):
                     mode="OFF"
                 ),
                 target=aws.scheduler.ScheduleTargetArgs(
-                    arn=self.queues[suffix].arn,
+                    arn=queue.arn,
                     role_arn=role.arn,
                     input=pulumi.Output.json_dumps({"type": message_type}),
                 ),

@@ -11,13 +11,11 @@ config:
   buddybird-app:api:
     priority: 20
     subdomain: dev
+    capacity: spot
   buddybird-app:authAccessTokenKey:
     secure: v1:47yI+Q52OmLbE+73:sBwGDkuRFZyUeWTF3GO8B5Feva6C0N/EJPSiwwtsVKCYP4cfr1c2zjUN1lfE9RV+6O+GonbQm/Bqj7Wg
   buddybird-app:authRefreshTokenKey:
     secure: v1:tUAAz77rDtPBXobs:yZQHcaQ46gM2ndshursq7xAb3mB0x9TPjVW7u8XtPbVTzEEKXa0YO3AgUEf62sIr4s4AhbDcTar6jCaY
-  buddybird-app:backofficeFrontend:
-    priority: 40
-    subdomain: dev-backoffice
   buddybird-app:backofficePassword:
     secure: v1:rJ1xzxXmoB3J3SIO:i3DaJd4IiAaFbDpSbEQg+B4qEs/QW65fU8EPO8grPA==
   buddybird-app:readonlyDbPassword:
@@ -25,3 +23,4 @@ config:
   cloudflare:apiToken:
     secure: v1:A7atGv/6spOLKltI:Sri2+DZWe0nNhUEjw1PctBCTODjQwYjfNt8PUtADwiRgResyvL4xG5189mOfkul/WS6n0Ub+afKUXpuukUsUo+iSHQjG
   buddybird-app:localDataBucket: "true"
+  buddybird-app:nightlyStop: "true"

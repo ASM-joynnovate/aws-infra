@@ -19,6 +19,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `edge.py` | `Landing`, `MbtiCdn` 컴포넌트 |
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
 | `dns.py` | Cloudflare CNAME 레코드 |
+| `schedule.py` | `NightlyStop` 컴포넌트 |
 
 ## 리소스 구성
 
@@ -36,9 +37,10 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `DataBucket` | `api-<스택>-data` | `dev`, `prod` | 데이터 버킷과 하드닝, 버저닝, 라이프사이클, TLS 전용 정책, CORS |
 | `DataBucket` | `api-dev-local-data` | `dev` | 로컬 개발용 데이터 버킷 |
 | `Database` | `api-<스택>-database` | `dev`, `prod` | RDS 인스턴스, readonly 시크릿 |
-| `WebService` | `backoffice-frontend-<스택>` | `dev`, `prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
+| `WebService` | `backoffice-frontend-prod` | `prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
 | `WebService` | `mbti-web-prod` | `prod` | backoffice frontend와 같음 |
 | `MbtiCdn` | `mbti-cdn-prod` | `prod` | 이미지 캐시 정책, CloudFront |
+| `NightlyStop` | `nightly-stop-dev` | `dev` | EventBridge Scheduler 4개, 실행 역할과 정책 |
 | `Landing` | `landing-prod` | `prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 
 ## 환경
@@ -49,7 +51,21 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | 스택 | api 호스트명 | backoffice frontend 호스트명 | mbti web 호스트명 | 랜딩 |
 |---|---|---|---|---|
 | `prod` | `buddybird.xyz` | `backoffice.buddybird.xyz` | `mbti.buddybird.xyz` | O |
-| `dev` | `dev.buddybird.xyz` | `dev-backoffice.buddybird.xyz` | X | X |
+| `dev` | `dev.buddybird.xyz` | X | X | X |
+
+### dev 야간 정지
+
+`nightlyStop`이 `true`인 스택은 EventBridge Scheduler가 한국 시간 기준으로 아래 작업을 실행합니다.
+
+| 시각 | 스케줄 | 동작 |
+|---|---|---|
+| 03:00 | `jn-buddybird-dev-stop-service` | api 서비스 `desiredCount` 0 |
+| 03:05 | `jn-buddybird-dev-stop-db` | RDS 정지 |
+| 08:50 | `jn-buddybird-dev-start-db` | RDS 시작 |
+| 09:00 | `jn-buddybird-dev-start-service` | api 서비스 `desiredCount` 1 |
+
+실행 역할은 `jn-buddybird-dev-nightly-stop`이고 해당 스택의 api 서비스와 RDS 인스턴스에만 권한이 있습니다.
+03시부터 09시 사이에는 dev 배포의 마이그레이션 task와 dev 스택의 RDS 변경이 실패합니다.
 
 ### 스택 config
 
@@ -58,15 +74,25 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 
 | 키 | 값 | 필수 |
 |---|---|---|
-| `api` | `subdomain`, `priority`. `subdomain`이 없으면 루트 도메인 | O |
-| `backofficeFrontend` | `subdomain`, `priority` | O |
+| `api` | `subdomain`, `priority`, `capacity`. `subdomain`이 없으면 루트 도메인 | O |
+| `backofficeFrontend` | `subdomain`, `priority`, `capacity`. 키가 있는 스택에만 backoffice frontend 생성 | X |
 | `mbtiWeb` | `subdomain`, `priority`. 키가 있는 스택에만 mbti web과 MBTI CloudFront 생성 | X |
 | `landing` | `true`인 스택에만 랜딩 생성 | X |
 | `localDataBucket` | `true`인 스택에 로컬 개발용 데이터 버킷 생성 | X |
 | `dbDeletionProtection` | `true`이면 RDS 삭제 보호와 최종 스냅샷 사용 | X |
 | `mbtiCdnEnabled` | `true`이면 mbti DNS를 MBTI CloudFront로 연결 | X |
+| `nightlyStop` | `true`인 스택의 api 서비스와 RDS를 매일 03시에 정지하고 09시에 시작 | X |
+
+`capacity`는 ECS 서비스의 capacity provider 전략이고 기본값은 `on-demand`입니다.
+
+| 값 | 전략 |
+|---|---|
+| `on-demand` | `FARGATE` |
+| `spot` | `FARGATE_SPOT` |
+| `on-demand-with-spot` | `FARGATE` base 1과 `FARGATE_SPOT` weight 1 |
 
 데이터 버킷의 CORS origin은 api와 backoffice frontend의 호스트명에서 계산합니다.
+backoffice frontend가 없는 스택은 그 자리에 `http://localhost:3000`을 사용하고 api의 `FRONTEND_CORS_ORIGIN`에도 같은 값을 넣습니다.
 api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 랜딩이 있는 스택에서는 랜딩 CloudFront가 루트 도메인을 소유하고 `/api/*`를 ALB로 전달합니다.
 
@@ -192,7 +218,7 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 
 | 환경 | 허용 출처 |
 |---|---|
-| dev | `https://dev.buddybird.xyz`, `https://dev-backoffice.buddybird.xyz` |
+| dev | `https://dev.buddybird.xyz`, `http://localhost:3000` |
 | prod | `https://buddybird.xyz`, `https://backoffice.buddybird.xyz` |
 | local | `http://localhost:3000` |
 
@@ -204,7 +230,9 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | cpu | 256 |
 | memory | 512 |
 | 포트 | 8000 |
-| 헬스체크 | `/api/healthz` |
+| 헬스체크 | `/api/healthz`, 10초 간격 |
+| capacity provider | prod `on-demand-with-spot`, dev `spot` |
+| task 수 | prod 2, dev 1 |
 | 서브넷 | public, `assign_public_ip` |
 | circuit breaker | 활성화, 실패 시 자동 롤백 |
 
@@ -268,8 +296,10 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | cpu | 256 |
 | memory | 512 |
 | 포트 | 3000 |
-| 헬스체크 | `/api/healthz` |
-| 타깃 그룹 이름 | `jn-buddybird-bo-fe-<env>` |
+| 환경 | prod |
+| 헬스체크 | `/api/healthz`, 10초 간격 |
+| capacity provider | `spot` |
+| 타깃 그룹 이름 | `jn-buddybird-bo-fe-prod` |
 | 역할 | execution role만 사용 |
 | circuit breaker | 활성화, 실패 시 자동 롤백 |
 | task role | X |
@@ -316,7 +346,8 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | cpu | 256 |
 | memory | 512 |
 | 포트 | 3000 |
-| 헬스체크 | `/api/healthz` |
+| 헬스체크 | `/api/healthz`, 10초 간격 |
+| capacity provider | `on-demand` |
 | 타깃 그룹 이름 | `jn-buddybird-mbti-prod` |
 | 역할 | execution role만 사용 |
 | circuit breaker | 활성화, 실패 시 자동 롤백 |
@@ -449,7 +480,6 @@ pulumi up --stack prod
 | 10 | `prod` | `buddybird.xyz` | `/api/*` |
 | 20 | `dev` | `dev.buddybird.xyz` | `/api/*` |
 | 30 | `prod` | `backoffice.buddybird.xyz` | 전체 |
-| 40 | `dev` | `dev-backoffice.buddybird.xyz` | 전체 |
 | 50 | `prod` | `mbti.buddybird.xyz` | 전체 |
 
 ## DNS
@@ -460,7 +490,6 @@ pulumi up --stack prod
 | `www.buddybird.xyz` | `prod` | `Landing` | CloudFront | 300초 | 비활성 |
 | `dev.buddybird.xyz` | `dev` | `Api` | ALB | 300초 | 비활성 |
 | `backoffice.buddybird.xyz` | `prod` | `WebService` | ALB | 300초 | 비활성 |
-| `dev-backoffice.buddybird.xyz` | `dev` | `WebService` | ALB | 300초 | 비활성 |
 | `mbti.buddybird.xyz` | `prod` | `WebService` | `mbtiCdnEnabled=true`: MBTI CloudFront, 기본값: ALB | 300초 | 비활성 |
 
 ## 배포
@@ -473,6 +502,13 @@ pulumi up --stack prod
 | backoffice frontend | `buddybird-backoffice-frontend` GitHub Actions |
 | mbti web | `buddybird-mbti-web` GitHub Actions |
 | 랜딩 | `buddybird-landing` GitHub Actions |
+
+ECS 서비스의 `desiredCount`는 Pulumi가 변경하지 않습니다.
+prod api는 최초 1회 아래 명령으로 task를 2개로 설정합니다.
+
+```bash
+aws ecs update-service --cluster jn-cluster --service jn-buddybird-api-prod --desired-count 2
+```
 
 이 스택에서 컨테이너 정의를 변경한 경우 `pulumi up` 후 서비스를 수동으로 갱신합니다.
 
@@ -494,6 +530,9 @@ aws ecs update-service --cluster jn-cluster --service <서비스> \
 |---|---|
 | release-please 릴리즈 PR 머지(dev) | 이미지 빌드와 ECR 푸시 → dev 서비스 갱신 |
 | push to main | prod 서비스 갱신 |
+
+dev 스택에는 backoffice frontend 서비스가 없습니다.
+`buddybird-backoffice-frontend` 워크플로의 dev 서비스 갱신 단계는 제거해야 합니다.
 
 ### mbti web 배포
 

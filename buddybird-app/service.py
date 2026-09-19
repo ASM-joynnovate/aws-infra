@@ -28,6 +28,14 @@ API_PATH_PATTERN = "/api/*"
 LOG_RETENTION_DAYS = 30
 DEREGISTRATION_DELAY = 30
 HEALTH_GRACE_SECONDS = 60
+HEALTH_CHECK_INTERVAL = 10
+
+DEFAULT_CAPACITY = "on-demand"
+CAPACITY_STRATEGIES = {
+    "on-demand": [("FARGATE", 0, 1)],
+    "spot": [("FARGATE_SPOT", 0, 1)],
+    "on-demand-with-spot": [("FARGATE", 1, 0), ("FARGATE_SPOT", 0, 1)],
+}
 
 AUTH_ALGORITHM = "HS256"
 AUTH_ACCESS_TOKEN_EXPIRE_MINUTES = 10080
@@ -122,6 +130,7 @@ def fargate_service(
     hostname: str,
     priority: int,
     path_pattern: str | None = None,
+    capacity: str = DEFAULT_CAPACITY,
     opts: pulumi.ResourceOptions,
 ) -> aws.ecs.Service:
     replaceable = pulumi.ResourceOptions.merge(
@@ -156,7 +165,7 @@ def fargate_service(
         health_check=aws.lb.TargetGroupHealthCheckArgs(
             path=HEALTH_PATH,
             matcher="200",
-            interval=30,
+            interval=HEALTH_CHECK_INTERVAL,
             timeout=5,
             healthy_threshold=2,
             unhealthy_threshold=3,
@@ -197,7 +206,13 @@ def fargate_service(
         cluster=cluster_arn,
         task_definition=task_definition.arn,
         desired_count=1,
-        launch_type="FARGATE",
+        force_new_deployment=True,
+        capacity_provider_strategies=[
+            aws.ecs.ServiceCapacityProviderStrategyArgs(
+                capacity_provider=provider, base=base, weight=weight
+            )
+            for provider, base, weight in CAPACITY_STRATEGIES[capacity]
+        ],
         health_check_grace_period_seconds=HEALTH_GRACE_SECONDS,
         deployment_circuit_breaker=aws.ecs.ServiceDeploymentCircuitBreakerArgs(
             enable=True, rollback=True
@@ -236,6 +251,7 @@ class WebServiceArgs:
     task_security_group_id: pulumi.Input[str]
     cluster_arn: pulumi.Input[str]
     listener_arn: pulumi.Input[str]
+    capacity: str = DEFAULT_CAPACITY
 
 
 class WebService(pulumi.ComponentResource):
@@ -297,6 +313,7 @@ class WebService(pulumi.ComponentResource):
             listener_arn=args.listener_arn,
             hostname=args.hostname,
             priority=args.priority,
+            capacity=args.capacity,
             opts=pulumi.ResourceOptions(parent=self),
         )
 
@@ -335,6 +352,7 @@ class ApiArgs:
     listener_arn: pulumi.Input[str]
     dns_target: pulumi.Input[str] | None = None
     local_data_cors_origins: Sequence[str] | None = None
+    capacity: str = DEFAULT_CAPACITY
 
 
 class Api(pulumi.ComponentResource):
@@ -549,6 +567,7 @@ class Api(pulumi.ComponentResource):
             hostname=args.hostname,
             priority=args.priority,
             path_pattern=API_PATH_PATTERN,
+            capacity=args.capacity,
             opts=pulumi.ResourceOptions(parent=self),
         )
 

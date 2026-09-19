@@ -20,9 +20,11 @@ config:
     secure: v1:WVn+xDi0fXhVQZVQ:neMvedfcJaOrSIgKQxMqTHmjKNJlG6NlNSPywdGAQw==
   buddybird-app:api:
     priority: 10
+    capacity: on-demand-with-spot
   buddybird-app:backofficeFrontend:
     subdomain: backoffice
     priority: 30
+    capacity: spot
   buddybird-app:mbtiWeb:
     subdomain: mbti
     priority: 50

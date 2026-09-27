@@ -7,13 +7,22 @@ from data import LOCAL_CORS_ORIGINS, ROOT_DOMAIN, data_bucket_name
 from edge import Landing, LandingArgs, MbtiCdn, MbtiCdnArgs
 from messaging import Messaging, MessagingArgs
 from schedule import NightlyStop, NightlyStopArgs
-from service import DEFAULT_CAPACITY, Api, ApiArgs, WebService, WebServiceArgs
+from service import (
+    DEFAULT_CAPACITY,
+    AiApi,
+    AiApiArgs,
+    Api,
+    ApiArgs,
+    WebService,
+    WebServiceArgs,
+)
 
 PREFIX = "jn-buddybird"
 API_PREFIX = f"{PREFIX}-api"
 BACKOFFICE_FRONTEND_PREFIX = f"{PREFIX}-backoffice-frontend"
 LANDING_PREFIX = f"{PREFIX}-site"
 MBTI_WEB_PREFIX = f"{PREFIX}-mbti"
+AI_API_PREFIX = f"{PREFIX}-ai-api"
 
 ALARM_EMAILS = ["joynnovate@gmail.com"]
 
@@ -53,6 +62,7 @@ config = pulumi.Config()
 api_settings = config.require_object("api")
 backoffice_frontend_settings = config.get_object("backofficeFrontend")
 mbti_web_settings = config.get_object("mbtiWeb")
+ai_api_settings = config.get_object("aiApi")
 landing_enabled = config.get_bool("landing") or False
 local_data_bucket_enabled = config.get_bool("localDataBucket") or False
 db_deletion_protection = config.get_bool("dbDeletionProtection") or False
@@ -98,6 +108,7 @@ backoffice_frontend_repository_url = shared.require_output(
     "backoffice_frontend_repository_url"
 )
 mbti_web_repository_url = shared.require_output("mbti_web_repository_url")
+ai_api_repository_url = shared.require_output("ai_api_repository_url")
 db_subnet_group_name = shared.require_output("db_subnet_group_name")
 
 messaging = Messaging(
@@ -166,13 +177,32 @@ if backoffice_frontend_settings is not None:
         ),
     )
 
+nightly_stop_services = {"service": api.service}
+
+if ai_api_settings is not None:
+    ai_api = AiApi(
+        f"ai-api-{env}",
+        AiApiArgs(
+            service_name=f"{AI_API_PREFIX}-{env}",
+            image=pulumi.Output.concat(ai_api_repository_url, f":{env}-bootstrap"),
+            region=region,
+            data_bucket=api.data.bucket,
+            queues=messaging.queues,
+            subnet_ids=public_subnet_ids,
+            task_security_group_id=task_security_group_id,
+            cluster_arn=cluster_arn,
+            capacity=ai_api_settings.get("capacity", DEFAULT_CAPACITY),
+        ),
+    )
+    nightly_stop_services["ai-api"] = ai_api.service
+
 if nightly_stop_enabled:
     NightlyStop(
         f"nightly-stop-{env}",
         NightlyStopArgs(
             name_prefix=f"{PREFIX}-{env}",
             cluster_arn=cluster_arn,
-            service=api.service,
+            services=nightly_stop_services,
             database=api.database.instance,
         ),
     )

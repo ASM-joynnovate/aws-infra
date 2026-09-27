@@ -33,6 +33,12 @@ MBTI_WEB_DEPLOY_SUBS = [
     f"{MBTI_WEB_SUB_PREFIX}:environment:prod",
 ]
 
+AI_API_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-ai-api@1367456561"
+AI_API_DEPLOY_SUBS = [
+    f"{AI_API_SUB_PREFIX}:ref:refs/heads/main",
+    f"{AI_API_SUB_PREFIX}:ref:refs/heads/dev",
+]
+
 ECR_PUSH_ACTIONS = [
     "ecr:BatchCheckLayerAvailability",
     "ecr:BatchGetImage",
@@ -58,6 +64,7 @@ class ImageDeliveryArgs:
     cluster_name: str
     prefix: str
     migration_cluster_arn: pulumi.Input[str] | None = None
+    pass_task_role: bool = False
 
 
 def _deploy_policy(
@@ -104,12 +111,15 @@ def _deploy_policy(
     )
 
     if args.migration_cluster_arn is None:
+        pass_roles = [f"arn:aws:iam::{account_id}:role/{prefix}-*-exec"]
+        if args.pass_task_role:
+            pass_roles.append(f"arn:aws:iam::{account_id}:role/{prefix}-*-task")
         statements.append(
             GetPolicyDocumentStatementArgs(
                 sid="PassExecRole",
                 effect=PolicyStatementEffect.ALLOW,
                 actions=["iam:PassRole"],
-                resources=[f"arn:aws:iam::{account_id}:role/{prefix}-*-exec"],
+                resources=pass_roles,
                 conditions=[passed_to_ecs_tasks],
             )
         )

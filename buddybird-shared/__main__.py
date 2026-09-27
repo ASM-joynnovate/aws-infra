@@ -3,6 +3,7 @@ import pulumi_aws as aws
 
 from data import DbNetwork, DbNetworkArgs
 from deploy import (
+    AI_API_DEPLOY_SUBS,
     API_DEPLOY_SUBS,
     BACKOFFICE_FRONTEND_DEPLOY_SUBS,
     MBTI_WEB_DEPLOY_SUBS,
@@ -13,6 +14,7 @@ from deploy import (
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
 MBTI_WEB_PREFIX = "jn-buddybird-mbti"
+AI_API_PREFIX = "jn-buddybird-ai-api"
 ECS_CLUSTER_NAME = "jn-cluster"
 
 INFRA_STACK = "organization/joynnovate-infra/prod"
@@ -65,6 +67,20 @@ mbti_web_delivery = ImageDelivery(
     ),
 )
 
+ai_api_delivery = ImageDelivery(
+    "ai-api",
+    ImageDeliveryArgs(
+        repository_name=AI_API_PREFIX,
+        role_name=f"{AI_API_PREFIX}-deploy",
+        subs=AI_API_DEPLOY_SUBS,
+        account_id=account_id,
+        region=region,
+        cluster_name=ECS_CLUSTER_NAME,
+        prefix=AI_API_PREFIX,
+        pass_task_role=True,
+    ),
+)
+
 db_network = DbNetwork(
     "db-network",
     DbNetworkArgs(subnet_group_name=API_PREFIX, subnet_ids=private_subnet_ids),
@@ -76,10 +92,12 @@ pulumi.export(
     backoffice_frontend_delivery.repository.repository_url,
 )
 pulumi.export("mbti_web_repository_url", mbti_web_delivery.repository.repository_url)
+pulumi.export("ai_api_repository_url", ai_api_delivery.repository.repository_url)
 pulumi.export("api_deploy_role_arn", api_delivery.deploy_role.arn)
 pulumi.export(
     "backoffice_frontend_deploy_role_arn",
     backoffice_frontend_delivery.deploy_role.arn,
 )
 pulumi.export("mbti_web_deploy_role_arn", mbti_web_delivery.deploy_role.arn)
+pulumi.export("ai_api_deploy_role_arn", ai_api_delivery.deploy_role.arn)
 pulumi.export("db_subnet_group_name", db_network.subnet_group.name)

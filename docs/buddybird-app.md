@@ -15,7 +15,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 |---|---|
 | `__main__.py` | 상수, 환경별 설정, 컴포넌트 조립, 출력값 |
 | `data.py` | `DataBucket`, `Database` 컴포넌트, 버킷 하드닝 |
-| `service.py` | `Api`, `WebService` 컴포넌트, 로그 그룹과 실행 역할과 Fargate 서비스 헬퍼 |
+| `service.py` | `Api`, `WebService`, `AiApi` 컴포넌트, 로그 그룹과 실행 역할과 Fargate 서비스 헬퍼 |
 | `edge.py` | `Landing`, `MbtiCdn` 컴포넌트 |
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
 | `dns.py` | Cloudflare CNAME 레코드 |
@@ -40,9 +40,10 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `Database` | `api-<스택>-database` | `dev`, `prod` | RDS 인스턴스, readonly 시크릿 |
 | `WebService` | `backoffice-frontend-prod` | `prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
 | `WebService` | `mbti-web-prod` | `prod` | backoffice frontend와 같음 |
+| `AiApi` | `ai-api-<스택>` | `dev`, `prod` | 실행 역할과 task 역할, 로그 그룹, task definition, ECS 서비스 |
 | `MbtiCdn` | `mbti-cdn-prod` | `prod` | 이미지 캐시 정책, CloudFront |
 | `Messaging` | `messaging-<스택>` | `dev`, `prod` | SQS 큐와 DLQ, DLQ 알람, 알람 topic, 업로드 이벤트 rule, 1분 주기 스케줄 |
-| `NightlyStop` | `nightly-stop-dev` | `dev` | EventBridge Scheduler 4개, 실행 역할과 정책 |
+| `NightlyStop` | `nightly-stop-dev` | `dev` | EventBridge Scheduler 6개, 실행 역할과 정책 |
 | `Landing` | `landing-prod` | `prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 
 ## 환경
@@ -62,11 +63,14 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | 시각 | 스케줄 | 동작 |
 |---|---|---|
 | 03:00 | `jn-buddybird-dev-stop-service` | api 서비스 `desiredCount` 0 |
+| 03:00 | `jn-buddybird-dev-stop-ai-api` | ai-api 서비스 `desiredCount` 0 |
 | 03:05 | `jn-buddybird-dev-stop-db` | RDS 정지 |
 | 08:50 | `jn-buddybird-dev-start-db` | RDS 시작 |
 | 09:00 | `jn-buddybird-dev-start-service` | api 서비스 `desiredCount` 1 |
+| 09:00 | `jn-buddybird-dev-start-ai-api` | ai-api 서비스 `desiredCount` 1 |
 
-실행 역할은 `jn-buddybird-dev-nightly-stop`이고 해당 스택의 api 서비스와 RDS 인스턴스에만 권한이 있습니다.
+실행 역할은 `jn-buddybird-dev-nightly-stop`이고 해당 스택의 api 서비스, ai-api 서비스, RDS 인스턴스에만 권한이 있습니다.
+ai-api 스케줄은 `aiApi`가 있는 스택에만 만듭니다.
 03시부터 09시 사이에는 dev 배포의 마이그레이션 task와 dev 스택의 RDS 변경이 실패합니다.
 
 ### 스택 config
@@ -79,6 +83,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `api` | `subdomain`, `priority`, `capacity`. `subdomain`이 없으면 루트 도메인 | O |
 | `backofficeFrontend` | `subdomain`, `priority`, `capacity`. 키가 있는 스택에만 backoffice frontend 생성 | X |
 | `mbtiWeb` | `subdomain`, `priority`. 키가 있는 스택에만 mbti web과 MBTI CloudFront 생성 | X |
+| `aiApi` | `capacity`. 키가 있는 스택에만 ai-api 생성 | X |
 | `landing` | `true`인 스택에만 랜딩 생성 | X |
 | `localDataBucket` | `true`인 스택에 로컬 개발용 데이터 버킷 생성 | X |
 | `dbDeletionProtection` | `true`이면 RDS 삭제 보호와 최종 스냅샷 사용 | X |
@@ -124,6 +129,10 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | mbti web: ECS 서비스, task definition, 타깃 그룹 | `jn-buddybird-mbti-prod` |
 | mbti web: execution role | `jn-buddybird-mbti-prod-exec` |
 | mbti web: 로그 그룹 | `/ecs/jn-buddybird-mbti-prod` |
+| ai-api: ECS 서비스, task definition | `jn-buddybird-ai-api-<env>` |
+| ai-api: task role | `jn-buddybird-ai-api-<env>-task` |
+| ai-api: execution role | `jn-buddybird-ai-api-<env>-exec` |
+| ai-api: 로그 그룹 | `/ecs/jn-buddybird-ai-api-<env>` |
 
 ### 공통 이름
 
@@ -135,6 +144,8 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | backoffice frontend 배포 역할 | `jn-buddybird-backoffice-frontend-deploy` | `buddybird-shared` |
 | mbti web ECR 저장소 | `jn-buddybird-mbti` | `buddybird-shared` |
 | mbti web 배포 역할 | `jn-buddybird-mbti-deploy` | `buddybird-shared` |
+| ai-api ECR 저장소 | `jn-buddybird-ai-api` | `buddybird-shared` |
+| ai-api 배포 역할 | `jn-buddybird-ai-api-deploy` | `buddybird-shared` |
 | RDS 서브넷 그룹 | `jn-buddybird-api` | `buddybird-shared` |
 | 랜딩 버킷 | `jn-buddybird-site-<계정>-<리전>` | `buddybird-app` |
 | 랜딩 배포 역할 | `jn-buddybird-site-deploy` | `buddybird-app` |
@@ -333,14 +344,16 @@ ECS는 종료된 consumer 컨테이너를 다시 시작하지 않으므로 dev a
 | 큐 | 읽는 프로세스 | 메시지 | 보내는 쪽 | visibility timeout |
 |---|---|---|---|---|
 | `upload-confirmation` | consumer | S3 Object Created 이벤트 | 데이터 버킷의 EventBridge rule | 60초 |
-| `parrot-sound-detection` | 1단계 판정 worker | 명령 `sound.classify` | consumer | 300초 |
+| `parrot-sound-detection` | ai-api | 명령 `cycle.analyze` | consumer | 300초 |
 | `mimicry-judgment` | 2단계 판정 worker | 명령 `sound.judge_mimicry` | consumer | 300초 |
-| `judgment-result` | consumer | 이벤트 `sound.classified`, `sound.mimicry_judged` | 판정 worker | 30초 |
+| `judgment-result` | consumer | 이벤트 `cycle.analyzed`, `sound.mimicry_judged` | ai-api, 2단계 판정 worker | 30초 |
 | `notification` | consumer | 명령 `notification.send` | api, consumer | 30초 |
 | `withdrawal` | consumer | 명령 `withdrawal.process` | api, consumer | 300초 |
 | `periodic-command` | consumer | 명령 `withdrawal.dispatch`, `session.check_heartbeats` | 1분 주기 스케줄 | 30초 |
 
 판정 큐 두 개의 300초는 초기값이며 모델의 처리 시간이 나오면 조정합니다.
+`cycle.analyze`는 세션 사이클 하나의 소리 목록을 담고, ai-api가 앵무새 소리 판정과 응급 여부를 담은 `cycle.analyzed`를 발행합니다.
+메시지 규격은 `buddybird-ai-api` README의 SQS 사이클 분석 절에 있습니다.
 메시지 type은 `<대상>.<동사>` 형태이고 명령은 명령형으로, 이벤트는 과거형으로 짓습니다.
 
 | 항목 | 값 |
@@ -357,6 +370,77 @@ ECS는 종료된 consumer 컨테이너를 다시 시작하지 않으므로 dev a
 변환된 이미지와 서버 내부 업로드의 key는 업로드 이벤트 조건에 해당하지 않으므로 이벤트가 반복되지 않습니다.
 첫 적용 뒤 수신 메일에서 구독을 승인해야 알람 메일을 받습니다.
 큐 URL은 stack output `queue_urls`로 조회합니다.
+
+## ai-api
+
+앵무새 소리 판정 모델과 onset 분석을 실행하는 `buddybird-ai-api`의 판정 worker입니다.
+`parrot-sound-detection` 큐의 요청을 처리하고 결과를 `judgment-result` 큐로 보냅니다.
+ALB에 연결하지 않고 DB에 접근하지 않습니다.
+
+### ECR 저장소
+
+| 항목 | 값 |
+|---|---|
+| 이름 | `jn-buddybird-ai-api` |
+| 태그 변경 | IMMUTABLE |
+| 스캔 | 푸시 시 |
+| 태그 없는 이미지 | 7일 후 삭제 |
+| 보관 | 최근 20개 |
+
+### 배포 역할
+
+#### 신뢰 정책
+
+- 이름: `jn-buddybird-ai-api-deploy`
+- `buddybird-ai-api` 레포지토리
+  - `ref:refs/heads/main`
+  - `ref:refs/heads/dev`
+
+#### 권한
+
+| 대상 | 액션 |
+|---|---|
+| `*` | `ecr:GetAuthorizationToken`, `ecs:RegisterTaskDefinition`, `ecs:DescribeTaskDefinition` |
+| ECR 저장소 | 레이어 업로드, `ecr:PutImage`, `ecr:DescribeImages` |
+| ECS 서비스 `jn-buddybird-ai-api-*` | `ecs:UpdateService`, `ecs:DescribeServices` |
+| `*-exec`, `*-task` 역할 | `iam:PassRole` (`ecs-tasks.amazonaws.com` 한정) |
+
+### ECS 서비스
+
+| 항목 | 값 |
+|---|---|
+| 아키텍처 | ARM64 Fargate |
+| cpu | 2048 |
+| memory | 4096 |
+| 포트 | 50051 (gRPC) |
+| capacity provider | prod `on-demand`, dev `spot` |
+| task 수 | 1 |
+| 서브넷 | public, `assign_public_ip` |
+| circuit breaker | 활성화, 실패 시 자동 롤백 |
+| ALB 연결 | X |
+| 이미지 태그 | `<env>-bootstrap` |
+
+판정 모델은 이미지에 들어 있고 실행 중에는 HuggingFace에 접속하지 않습니다.
+
+### 환경 변수
+
+| 변수 | 값 |
+|---|---|
+| `AUDIO_S3_BUCKET` | 데이터 버킷 이름 |
+| `SQS_PARROT_SOUND_DETECTION_QUEUE_URL` | `parrot-sound-detection` 큐 URL |
+| `SQS_JUDGMENT_RESULT_QUEUE_URL` | `judgment-result` 큐 URL |
+
+시크릿은 사용하지 않습니다.
+
+### task role 권한
+
+| 대상 | 액션 |
+|---|---|
+| 데이터 버킷 `user/*/session/*` 객체 | `s3:GetObject` |
+| `parrot-sound-detection` 큐 | 수신, 삭제, visibility 변경, 속성 조회 |
+| `judgment-result` 큐 | `sqs:SendMessage` |
+
+세션 소리의 key는 `user/<user_id>/session/<session_id>/sound/<file_id>`입니다.
 
 ## backoffice frontend
 
@@ -600,6 +684,7 @@ pulumi up --stack prod
 | backoffice frontend | `buddybird-backoffice-frontend` GitHub Actions |
 | mbti web | `buddybird-mbti-web` GitHub Actions |
 | 랜딩 | `buddybird-landing` GitHub Actions |
+| ai-api | `buddybird-ai-api` GitHub Actions 수동 실행 |
 
 ECS 서비스의 `desiredCount`는 Pulumi가 변경하지 않습니다.
 prod api는 최초 1회 아래 명령으로 task를 2개로 설정합니다.
@@ -614,6 +699,15 @@ prod consumer 서비스는 task 0개로 만들어집니다.
 ```bash
 aws ecs update-service --cluster jn-cluster --service jn-buddybird-api-prod-consumer --desired-count 1
 ```
+
+ai-api 서비스도 task 0개로 만들어집니다.
+`<env>-bootstrap` 태그 이미지를 푸시한 뒤 스택마다 아래 명령으로 시작합니다.
+
+```bash
+aws ecs update-service --cluster jn-cluster --service jn-buddybird-ai-api-<env> --desired-count 1
+```
+
+dev는 야간 정지 스케줄이 매일 09시에 task를 1개로 설정합니다.
 
 이 스택에서 컨테이너 정의를 변경한 경우 `pulumi up` 후 서비스를 수동으로 갱신합니다.
 
@@ -693,5 +787,5 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly;
 ### 최초 구축 순서
 
 1. `buddybird-shared` 적용
-2. api ECR에 `bootstrap` 태그로, backoffice frontend ECR에 `dev-bootstrap`과 `prod-bootstrap` 태그로, mbti web ECR에 `prod-bootstrap` 태그로 이미지 푸시
+2. api ECR에 `bootstrap` 태그로, backoffice frontend ECR에 `dev-bootstrap`과 `prod-bootstrap` 태그로, mbti web ECR에 `prod-bootstrap` 태그로, ai-api ECR에 `dev-bootstrap`과 `prod-bootstrap` 태그로 이미지 푸시
 3. `buddybird-app` 적용

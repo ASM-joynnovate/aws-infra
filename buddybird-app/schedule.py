@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import pulumi
@@ -40,7 +41,7 @@ def scheduler_assume_role_policy() -> str:
 class NightlyStopArgs:
     name_prefix: str
     cluster_arn: pulumi.Input[str]
-    service: aws.ecs.Service
+    services: Mapping[str, aws.ecs.Service]
     database: aws.rds.Instance
 
 
@@ -71,7 +72,7 @@ class NightlyStop(pulumi.ComponentResource):
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
                         actions=["ecs:UpdateService"],
-                        resources=[args.service.id],
+                        resources=[service.id for service in args.services.values()],
                     ),
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
@@ -83,11 +84,13 @@ class NightlyStop(pulumi.ComponentResource):
             opts=child,
         )
 
-        def service_input(desired_count: int) -> pulumi.Output[str]:
+        def service_input(
+            service: aws.ecs.Service, desired_count: int
+        ) -> pulumi.Output[str]:
             return pulumi.Output.json_dumps(
                 {
                     "Cluster": args.cluster_arn,
-                    "Service": args.service.name,
+                    "Service": service.name,
                     "DesiredCount": desired_count,
                 }
             )
@@ -97,21 +100,24 @@ class NightlyStop(pulumi.ComponentResource):
         )
 
         schedules = [
-            (
-                "stop-service",
-                STOP_SERVICE_CRON,
-                ECS_UPDATE_SERVICE_TARGET,
-                service_input(0),
-            ),
             ("stop-db", STOP_DB_CRON, RDS_STOP_TARGET, database_input),
             ("start-db", START_DB_CRON, RDS_START_TARGET, database_input),
-            (
-                "start-service",
-                START_SERVICE_CRON,
-                ECS_UPDATE_SERVICE_TARGET,
-                service_input(1),
-            ),
         ]
+        for key, service in args.services.items():
+            schedules += [
+                (
+                    f"stop-{key}",
+                    STOP_SERVICE_CRON,
+                    ECS_UPDATE_SERVICE_TARGET,
+                    service_input(service, 0),
+                ),
+                (
+                    f"start-{key}",
+                    START_SERVICE_CRON,
+                    ECS_UPDATE_SERVICE_TARGET,
+                    service_input(service, 1),
+                ),
+            ]
 
         for suffix, cron, target_arn, target_input in schedules:
             aws.scheduler.Schedule(

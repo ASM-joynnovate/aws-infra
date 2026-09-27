@@ -12,6 +12,8 @@ config:
     priority: 20
     subdomain: dev
     capacity: spot
+  buddybird-app:aiApi:
+    capacity: spot
   buddybird-app:backofficePassword:
     secure: v1:rJ1xzxXmoB3J3SIO:i3DaJd4IiAaFbDpSbEQg+B4qEs/QW65fU8EPO8grPA==
   buddybird-app:readonlyDbPassword:

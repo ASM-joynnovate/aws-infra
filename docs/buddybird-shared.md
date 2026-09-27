@@ -23,7 +23,7 @@ buddybird의 dev와 prod 환경이 함께 사용하는 ECR 저장소, 이미지 
 
 | 컴포넌트 | 이름 | 리소스 |
 |---|---|---|
-| `ImageDelivery` | `api`, `backoffice-frontend`, `mbti-web` | ECR 저장소, 라이프사이클 정책, 배포 역할과 정책 |
+| `ImageDelivery` | `api`, `backoffice-frontend`, `mbti-web`, `ai-api` | ECR 저장소, 라이프사이클 정책, 배포 역할과 정책 |
 | `DbNetwork` | `db-network` | RDS 서브넷 그룹 |
 
 ECR 저장소의 설정과 배포 역할의 신뢰 정책, 권한은 `buddybird-app.md`의 서비스별 절에 있습니다.
@@ -46,7 +46,9 @@ ECR 저장소의 설정과 배포 역할의 신뢰 정책, 권한은 `buddybird-
 | `api_repository_url` | api task definition의 이미지 |
 | `backoffice_frontend_repository_url` | backoffice frontend task definition의 이미지 |
 | `mbti_web_repository_url` | mbti web task definition의 이미지 |
+| `ai_api_repository_url` | ai-api task definition의 이미지 |
 | `db_subnet_group_name` | RDS 인스턴스 |
 | `api_deploy_role_arn` | `buddybird-api` 레포지토리의 GitHub Actions |
 | `backoffice_frontend_deploy_role_arn` | `buddybird-backoffice-frontend` 레포지토리의 GitHub Actions |
 | `mbti_web_deploy_role_arn` | `buddybird-mbti-web` 레포지토리의 GitHub Actions |
+| `ai_api_deploy_role_arn` | `buddybird-ai-api` 레포지토리의 GitHub Actions |

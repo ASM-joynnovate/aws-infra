@@ -50,6 +50,13 @@ S3_OBJECT_ACTIONS = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
 S3_TAGGING_ACTIONS = ["s3:PutObjectTagging"]
 
 MERGED_TASK_MEMORY = "1024"
+AI_API_TASK_CPU = "2048"
+AI_API_TASK_MEMORY = "4096"
+AI_API_CONTAINER_NAME = "ai-api"
+AI_API_GRPC_PORT = 50051
+AI_API_SOUND_KEY_PATTERN = "user/*/session/*"
+AI_API_RECEIVE_QUEUE = PARROT_SOUND_DETECTION
+AI_API_SEND_QUEUE = JUDGMENT_RESULT
 CONSUMER_CONTAINER_NAME = "consumer"
 CONSUMER_COMMAND = ["python", "-m", "app.consumer"]
 
@@ -173,11 +180,12 @@ def fargate_task_definition(
     execution_role_arn: pulumi.Input[str],
     task_role_arn: pulumi.Input[str] | None,
     opts: pulumi.ResourceOptions,
+    cpu: str = TASK_CPU,
 ) -> aws.ecs.TaskDefinition:
     return aws.ecs.TaskDefinition(
         f"{name}-task-definition",
         family=family,
-        cpu=TASK_CPU,
+        cpu=cpu,
         memory=memory,
         network_mode="awsvpc",
         requires_compatibilities=["FARGATE"],
@@ -214,12 +222,15 @@ def background_service(
     task_security_group_id: pulumi.Input[str],
     cluster_arn: pulumi.Input[str],
     capacity: str = DEFAULT_CAPACITY,
+    cpu: str = TASK_CPU,
+    memory: str = TASK_MEMORY,
     opts: pulumi.ResourceOptions,
 ) -> aws.ecs.Service:
     task_definition = fargate_task_definition(
         name,
         family=service_name,
-        memory=TASK_MEMORY,
+        cpu=cpu,
+        memory=memory,
         container=container,
         execution_role_arn=execution_role_arn,
         task_role_arn=task_role_arn,
@@ -448,6 +459,136 @@ class WebService(pulumi.ComponentResource):
             hostname=args.hostname,
             target=args.dns_target,
             opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        self.register_outputs({"service": self.service})
+
+
+@dataclass(frozen=True)
+class AiApiArgs:
+    service_name: str
+    image: pulumi.Input[str]
+    region: str
+    data_bucket: aws.s3.Bucket
+    queues: Mapping[str, aws.sqs.Queue]
+    subnet_ids: pulumi.Input[Sequence[pulumi.Input[str]]]
+    task_security_group_id: pulumi.Input[str]
+    cluster_arn: pulumi.Input[str]
+    capacity: str = DEFAULT_CAPACITY
+
+
+class AiApi(pulumi.ComponentResource):
+    def __init__(
+        self,
+        name: str,
+        args: AiApiArgs,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
+        super().__init__("joynnovate:buddybird:AiApi", name, None, opts)
+        child = pulumi.ResourceOptions(parent=self)
+
+        logs = log_group(name, log_group_name=f"/ecs/{args.service_name}", opts=child)
+
+        execution = execution_role(
+            name, role_name=f"{args.service_name}-exec", opts=child
+        )
+
+        task = aws.iam.Role(
+            f"{name}-task-role",
+            name=f"{args.service_name}-task",
+            assume_role_policy=_assume_role_policy(),
+            opts=pulumi.ResourceOptions.merge(
+                child, pulumi.ResourceOptions(delete_before_replace=True)
+            ),
+        )
+
+        receive_queue = args.queues[AI_API_RECEIVE_QUEUE]
+        send_queue = args.queues[AI_API_SEND_QUEUE]
+
+        aws.iam.RolePolicy(
+            f"{name}-task-role-policy",
+            role=task.name,
+            policy=aws.iam.get_policy_document_output(
+                statements=[
+                    GetPolicyDocumentStatementArgs(
+                        effect=PolicyStatementEffect.ALLOW,
+                        actions=["s3:GetObject"],
+                        resources=[
+                            pulumi.Output.format(
+                                "{0}/{1}",
+                                args.data_bucket.arn,
+                                AI_API_SOUND_KEY_PATTERN,
+                            )
+                        ],
+                    ),
+                    GetPolicyDocumentStatementArgs(
+                        effect=PolicyStatementEffect.ALLOW,
+                        actions=SQS_RECEIVE_ACTIONS,
+                        resources=[receive_queue.arn],
+                    ),
+                    GetPolicyDocumentStatementArgs(
+                        effect=PolicyStatementEffect.ALLOW,
+                        actions=["sqs:SendMessage"],
+                        resources=[send_queue.arn],
+                    ),
+                ]
+            ).json,
+            opts=child,
+        )
+
+        container = pulumi.Output.all(
+            image=args.image,
+            log_group=logs.name,
+            bucket_name=args.data_bucket.id,
+            receive_queue_url=receive_queue.url,
+            send_queue_url=send_queue.url,
+        ).apply(
+            lambda a: json.dumps(
+                [
+                    {
+                        "name": AI_API_CONTAINER_NAME,
+                        "image": a["image"],
+                        "essential": True,
+                        "portMappings": [
+                            {"containerPort": AI_API_GRPC_PORT, "protocol": "tcp"}
+                        ],
+                        "environment": [
+                            {"name": "AUDIO_S3_BUCKET", "value": a["bucket_name"]},
+                            {
+                                "name": _queue_url_variable(AI_API_RECEIVE_QUEUE),
+                                "value": a["receive_queue_url"],
+                            },
+                            {
+                                "name": _queue_url_variable(AI_API_SEND_QUEUE),
+                                "value": a["send_queue_url"],
+                            },
+                        ],
+                        "logConfiguration": {
+                            "logDriver": "awslogs",
+                            "options": {
+                                "awslogs-group": a["log_group"],
+                                "awslogs-region": args.region,
+                                "awslogs-stream-prefix": AI_API_CONTAINER_NAME,
+                            },
+                        },
+                    }
+                ]
+            )
+        )
+
+        self.service = background_service(
+            name,
+            service_name=args.service_name,
+            container=container,
+            execution_role_arn=execution.arn,
+            task_role_arn=task.arn,
+            subnet_ids=args.subnet_ids,
+            task_security_group_id=args.task_security_group_id,
+            cluster_arn=args.cluster_arn,
+            capacity=args.capacity,
+            cpu=AI_API_TASK_CPU,
+            memory=AI_API_TASK_MEMORY,
+            opts=child,
         )
 
         self.register_outputs({"service": self.service})

@@ -92,6 +92,7 @@ APP_SECRET_ENV_VARS = {
     "apple_private_key": "APPLE_PRIVATE_KEY",
     "kakao_admin_key": "KAKAO_ADMIN_KEY",
     "fcm_service_account_json": "FCM_SERVICE_ACCOUNT_JSON",
+    "sentry_dsn": "SENTRY_DSN",
 }
 
 ROTATION_REDEPLOY_TIMEOUT_SECONDS = 10

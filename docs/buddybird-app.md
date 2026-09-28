@@ -86,7 +86,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `nightlyStop` | `true`인 스택의 api 서비스와 RDS를 매일 03시에 정지하고 09시에 시작 | X |
 | `consumerSeparate` | `true`이면 consumer를 별도 ECS 서비스로 생성. 없으면 api task의 두 번째 컨테이너로 실행 | X |
 | `supabaseUrl`, `supabasePublishableKey`, `googleClientId`, `appleClientIds`, `appleTeamId`, `appleKeyId` | api와 consumer의 환경 변수 값 | O |
-| `supabaseSecretKey`, `oauthCredentialsKey`, `googleClientSecret`, `applePrivateKey`, `kakaoAdminKey`, `fcmServiceAccountJson` | 앱 시크릿에 저장하는 secret | O |
+| `supabaseSecretKey`, `oauthCredentialsKey`, `googleClientSecret`, `applePrivateKey`, `kakaoAdminKey`, `fcmServiceAccountJson`, `sentryDsn` | 앱 시크릿에 저장하는 secret | O |
 
 `capacity`는 ECS 서비스의 capacity provider 전략이고 기본값은 `on-demand`입니다.
 

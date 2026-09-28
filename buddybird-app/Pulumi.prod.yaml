@@ -24,6 +24,7 @@ config:
   buddybird-app:mbtiWeb:
     subdomain: mbti
     priority: 50
+  buddybird-app:mbtiCdnEnabled: "true"
   buddybird-app:landing: "true"
   buddybird-app:consumerSeparate: "true"
   buddybird-app:dbDeletionProtection: "true"

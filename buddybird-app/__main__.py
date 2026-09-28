@@ -33,6 +33,7 @@ APP_SECRET_CONFIG_KEYS = {
     "applePrivateKey": "apple_private_key",
     "kakaoAdminKey": "kakao_admin_key",
     "fcmServiceAccountJson": "fcm_service_account_json",
+    "sentryDsn": "sentry_dsn",
 }
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"

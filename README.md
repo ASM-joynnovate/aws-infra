@@ -77,6 +77,7 @@ Pulumi가 스택 secret을 KMS 키로 암호화한다.
 | `applePrivateKey` | `buddybird-app` |
 | `kakaoAdminKey` | `buddybird-app` |
 | `fcmServiceAccountJson` | `buddybird-app` |
+| `sentryDsn` | `buddybird-app` |
 
 `backofficePassword`와 `readonlyDbPassword`는 두 스택이 같은 값을 사용한다.
 

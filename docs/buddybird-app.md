@@ -412,7 +412,8 @@ ALB에 연결하지 않고 DB에 접근하지 않습니다.
 | 아키텍처 | ARM64 Fargate |
 | cpu | 2048 |
 | memory | 4096 |
-| 포트 | 50051 (gRPC) |
+| 요청 수신 | SQS 워커만. HTTP·gRPC 포트 없음 |
+| 헬스체크 | `python -m app.health`, 15초 주기, 제한 5초, 3회 실패 시 비정상, startPeriod 120초 |
 | capacity provider | prod `on-demand`, dev `spot` |
 | task 수 | 1 |
 | 서브넷 | public, `assign_public_ip` |
@@ -426,11 +427,54 @@ ALB에 연결하지 않고 DB에 접근하지 않습니다.
 
 | 변수 | 값 |
 |---|---|
+| `APP_ENV` | `dev` 또는 `prod`. 지표 로그와 알림에 표시하고, `prod`면 시작 알림을 보냅니다 |
 | `AUDIO_S3_BUCKET` | 데이터 버킷 이름 |
 | `SQS_PARROT_SOUND_DETECTION_QUEUE_URL` | `parrot-sound-detection` 큐 URL |
 | `SQS_JUDGMENT_RESULT_QUEUE_URL` | `judgment-result` 큐 URL |
 
-시크릿은 사용하지 않습니다.
+### 시크릿
+
+| 변수 | 출처 |
+|---|---|
+| `ALERT_SLACK_WEBHOOK_URL` | SSM Parameter Store `/jn-buddybird-ai-api-<env>/alert-slack-webhook-url` (SecureString, 표준 계층) |
+
+- 스택 설정 `aiApiSlackWebhookUrl`(시크릿)이 있을 때만 파라미터와 `secrets` 항목을 만듭니다. 없으면 알림 없이 로그만 남깁니다.
+- 설정: `buddybird-app`에서 `pulumi config set --secret aiApiSlackWebhookUrl '<Slack 수신 웹훅 URL>' --stack <dev|prod>`
+- 실행 역할에 해당 파라미터의 `ssm:GetParameters`만 허용합니다. 기본 `aws/ssm` 키를 쓰므로 KMS 권한은 필요 없습니다.
+- 표준 계층 파라미터라 추가 비용이 없습니다. Secrets Manager는 시크릿마다 월 비용이 있어 쓰지 않습니다.
+
+### 헬스체크와 알림
+
+ai-api는 워커 상태를 파일에 기록하고, 컨테이너 헬스체크(`python -m app.health`)가 아래 경우 비정상으로 판정합니다. ECS는 비정상 task를 교체합니다.
+
+| 비정상 조건 | 기준 |
+|---|---|
+| 모델 준비 전 | 모델 로딩이 끝나기 전 (startPeriod 동안은 무시) |
+| SQS 조회 정체 | 90초 초과 |
+| 사이클 처리 정체 | 10분 초과 |
+| 추론 연속 실패 | 3회 |
+
+Slack 알림은 ai-api가 직접 웹훅으로 보냅니다.
+
+| 알림 | 조건 | 환경 |
+|---|---|---|
+| `ai-api 시작` | 모델 로딩이 끝나 워커가 시작됨 (모델 버전 포함) | prod만 |
+| `ai-api 시작 실패` | 모델 로딩 전 오류로 종료 | 전체 |
+| `ai-api 비정상 종료` | 모델 로딩 후 예외로 종료 | 전체 |
+| `ai-api 추론 연속 실패` | 추론이 연속 3회 실패 | 전체 |
+| `ai-api 추론 복구` | 연속 실패 후 추론이 다시 성공 | 전체 |
+
+- 재시도 5회 후 DLQ로 간 사이클은 [메시지 큐](#메시지-큐)의 DLQ 알람(이메일)이 알립니다.
+- 프로세스가 멈추거나 강제 종료된 경우는 알림 없이 헬스체크와 ECS 재시작으로 처리합니다. 멈춤 알림은 배포 후 실측을 보고 추가를 결정합니다.
+
+### 적용 순서
+
+헬스체크 명령은 `app.health`가 들어 있는 이미지에서만 동작합니다. 이 명령이 없는 이미지로 서비스가 뜨면 헬스체크가 계속 실패해 circuit breaker가 배포를 롤백합니다.
+
+1. `buddybird-shared` 적용 (ECR 저장소, 배포 역할)
+2. `buddybird-ai-api`의 `dev` 브랜치에서 deploy 워크플로로 `<env>-bootstrap` 태그 이미지 push
+3. `aiApiSlackWebhookUrl` 스택 설정
+4. `buddybird-app` 적용
 
 ### task role 권한
 

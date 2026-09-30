@@ -53,7 +53,15 @@ MERGED_TASK_MEMORY = "1024"
 AI_API_TASK_CPU = "2048"
 AI_API_TASK_MEMORY = "4096"
 AI_API_CONTAINER_NAME = "ai-api"
-AI_API_GRPC_PORT = 50051
+# ai-api 이미지의 헬스체크 명령. startPeriod는 모델 로딩 실측 후 조정한다.
+AI_API_HEALTH_CHECK = {
+    "command": ["CMD", "python", "-m", "app.health"],
+    "interval": 15,
+    "timeout": 5,
+    "retries": 3,
+    "startPeriod": 120,
+}
+AI_API_WEBHOOK_VARIABLE = "ALERT_SLACK_WEBHOOK_URL"
 AI_API_SOUND_KEY_PATTERN = "user/*/session/*"
 AI_API_RECEIVE_QUEUE = PARROT_SOUND_DETECTION
 AI_API_SEND_QUEUE = JUDGMENT_RESULT
@@ -474,7 +482,9 @@ class AiApiArgs:
     subnet_ids: pulumi.Input[Sequence[pulumi.Input[str]]]
     task_security_group_id: pulumi.Input[str]
     cluster_arn: pulumi.Input[str]
+    env: str
     capacity: str = DEFAULT_CAPACITY
+    slack_webhook_url: pulumi.Input[str] | None = None
 
 
 class AiApi(pulumi.ComponentResource):
@@ -536,12 +546,38 @@ class AiApi(pulumi.ComponentResource):
             opts=child,
         )
 
+        webhook_parameter_arn: pulumi.Input[str] = ""
+        if args.slack_webhook_url is not None:
+            webhook_parameter = aws.ssm.Parameter(
+                f"{name}-alert-webhook",
+                name=f"/{args.service_name}/alert-slack-webhook-url",
+                type=aws.ssm.ParameterType.SECURE_STRING,
+                value=args.slack_webhook_url,
+                opts=child,
+            )
+            webhook_parameter_arn = webhook_parameter.arn
+            aws.iam.RolePolicy(
+                f"{name}-exec-role-alert-webhook",
+                role=execution.name,
+                policy=aws.iam.get_policy_document_output(
+                    statements=[
+                        GetPolicyDocumentStatementArgs(
+                            effect=PolicyStatementEffect.ALLOW,
+                            actions=["ssm:GetParameters"],
+                            resources=[webhook_parameter.arn],
+                        )
+                    ]
+                ).json,
+                opts=child,
+            )
+
         container = pulumi.Output.all(
             image=args.image,
             log_group=logs.name,
             bucket_name=args.data_bucket.id,
             receive_queue_url=receive_queue.url,
             send_queue_url=send_queue.url,
+            webhook_parameter_arn=webhook_parameter_arn,
         ).apply(
             lambda a: json.dumps(
                 [
@@ -549,10 +585,9 @@ class AiApi(pulumi.ComponentResource):
                         "name": AI_API_CONTAINER_NAME,
                         "image": a["image"],
                         "essential": True,
-                        "portMappings": [
-                            {"containerPort": AI_API_GRPC_PORT, "protocol": "tcp"}
-                        ],
+                        "healthCheck": AI_API_HEALTH_CHECK,
                         "environment": [
+                            {"name": "APP_ENV", "value": args.env},
                             {"name": "AUDIO_S3_BUCKET", "value": a["bucket_name"]},
                             {
                                 "name": _queue_url_variable(AI_API_RECEIVE_QUEUE),
@@ -563,6 +598,16 @@ class AiApi(pulumi.ComponentResource):
                                 "value": a["send_queue_url"],
                             },
                         ],
+                        "secrets": (
+                            [
+                                {
+                                    "name": AI_API_WEBHOOK_VARIABLE,
+                                    "valueFrom": a["webhook_parameter_arn"],
+                                }
+                            ]
+                            if a["webhook_parameter_arn"]
+                            else []
+                        ),
                         "logConfiguration": {
                             "logDriver": "awslogs",
                             "options": {

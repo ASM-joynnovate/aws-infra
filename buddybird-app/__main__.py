@@ -191,7 +191,9 @@ if ai_api_settings is not None:
             subnet_ids=public_subnet_ids,
             task_security_group_id=task_security_group_id,
             cluster_arn=cluster_arn,
+            env=env,
             capacity=ai_api_settings.get("capacity", DEFAULT_CAPACITY),
+            slack_webhook_url=config.get_secret("aiApiSlackWebhookUrl"),
         ),
     )
     nightly_stop_services["ai-api"] = ai_api.service

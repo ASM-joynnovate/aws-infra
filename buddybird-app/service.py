@@ -479,6 +479,7 @@ class AiApiArgs:
     region: str
     data_bucket: aws.s3.Bucket
     queues: Mapping[str, aws.sqs.Queue]
+    dead_letter_queues: Mapping[str, aws.sqs.Queue]
     subnet_ids: pulumi.Input[Sequence[pulumi.Input[str]]]
     task_security_group_id: pulumi.Input[str]
     cluster_arn: pulumi.Input[str]
@@ -514,6 +515,8 @@ class AiApi(pulumi.ComponentResource):
 
         receive_queue = args.queues[AI_API_RECEIVE_QUEUE]
         send_queue = args.queues[AI_API_SEND_QUEUE]
+        # 처리에 실패한 요청은 재시도 없이 워커가 직접 요청 큐의 DLQ로 옮긴다.
+        receive_dead_letter_queue = args.dead_letter_queues[AI_API_RECEIVE_QUEUE]
 
         aws.iam.RolePolicy(
             f"{name}-task-role-policy",
@@ -539,7 +542,7 @@ class AiApi(pulumi.ComponentResource):
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
                         actions=["sqs:SendMessage"],
-                        resources=[send_queue.arn],
+                        resources=[send_queue.arn, receive_dead_letter_queue.arn],
                     ),
                 ]
             ).json,
@@ -576,6 +579,7 @@ class AiApi(pulumi.ComponentResource):
             log_group=logs.name,
             bucket_name=args.data_bucket.id,
             receive_queue_url=receive_queue.url,
+            receive_dead_letter_queue_url=receive_dead_letter_queue.url,
             send_queue_url=send_queue.url,
             webhook_parameter_arn=webhook_parameter_arn,
         ).apply(
@@ -592,6 +596,12 @@ class AiApi(pulumi.ComponentResource):
                             {
                                 "name": _queue_url_variable(AI_API_RECEIVE_QUEUE),
                                 "value": a["receive_queue_url"],
+                            },
+                            {
+                                "name": _dead_letter_queue_url_variable(
+                                    AI_API_RECEIVE_QUEUE
+                                ),
+                                "value": a["receive_dead_letter_queue_url"],
                             },
                             {
                                 "name": _queue_url_variable(AI_API_SEND_QUEUE),
@@ -641,6 +651,10 @@ class AiApi(pulumi.ComponentResource):
 
 def _queue_url_variable(suffix: str) -> str:
     return f"SQS_{suffix.upper().replace('-', '_')}_QUEUE_URL"
+
+
+def _dead_letter_queue_url_variable(suffix: str) -> str:
+    return f"SQS_{suffix.upper().replace('-', '_')}_DLQ_URL"
 
 
 def _container(

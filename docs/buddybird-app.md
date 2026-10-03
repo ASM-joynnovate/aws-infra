@@ -430,6 +430,7 @@ ALB에 연결하지 않고 DB에 접근하지 않습니다.
 | `APP_ENV` | `dev` 또는 `prod`. 지표 로그와 알림에 표시하고, `prod`면 시작 알림을 보냅니다 |
 | `AUDIO_S3_BUCKET` | 데이터 버킷 이름 |
 | `SQS_PARROT_SOUND_DETECTION_QUEUE_URL` | `parrot-sound-detection` 큐 URL |
+| `SQS_PARROT_SOUND_DETECTION_DLQ_URL` | `parrot-sound-detection-dlq` 큐 URL. 처리에 실패한 요청을 재시도 없이 바로 옮깁니다 |
 | `SQS_JUDGMENT_RESULT_QUEUE_URL` | `judgment-result` 큐 URL |
 
 ### 시크릿
@@ -464,7 +465,7 @@ Slack 알림은 ai-api가 직접 웹훅으로 보냅니다.
 | `ai-api 추론 연속 실패` | 추론이 연속 3회 실패 | 전체 |
 | `ai-api 추론 복구` | 연속 실패 후 추론이 다시 성공 | 전체 |
 
-- 재시도 5회 후 DLQ로 간 사이클은 [메시지 큐](#메시지-큐)의 DLQ 알람(이메일)이 알립니다.
+- 처리에 실패한 사이클은 ai-api가 재시도 없이 바로 DLQ로 옮기고, [메시지 큐](#메시지-큐)의 DLQ 알람(이메일)이 알립니다. 실패 이유는 메시지 속성 `error`에 남습니다. DLQ 전송까지 실패하면 요청이 큐에 남아 redrive policy(`maxReceiveCount` 5)를 따릅니다.
 - 프로세스가 멈추거나 강제 종료된 경우는 알림 없이 헬스체크와 ECS 재시작으로 처리합니다. 멈춤 알림은 배포 후 실측을 보고 추가를 결정합니다.
 
 ### 적용 순서
@@ -483,6 +484,7 @@ Slack 알림은 ai-api가 직접 웹훅으로 보냅니다.
 | 데이터 버킷 `user/*/session/*` 객체 | `s3:GetObject` |
 | `parrot-sound-detection` 큐 | 수신, 삭제, visibility 변경, 속성 조회 |
 | `judgment-result` 큐 | `sqs:SendMessage` |
+| `parrot-sound-detection-dlq` 큐 | `sqs:SendMessage` (처리 실패 요청 이동) |
 
 세션 소리의 key는 `user/<user_id>/session/<session_id>/sound/<file_id>`입니다.
 

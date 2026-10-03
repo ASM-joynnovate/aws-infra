@@ -188,6 +188,7 @@ if ai_api_settings is not None:
             region=region,
             data_bucket=api.data.bucket,
             queues=messaging.queues,
+            dead_letter_queues=messaging.dead_letter_queues,
             subnet_ids=public_subnet_ids,
             task_security_group_id=task_security_group_id,
             cluster_arn=cluster_arn,

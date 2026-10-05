@@ -463,7 +463,11 @@ Origin은 기존 ALB이며, 모든 경로에서 `Host`를 전달하고 HTTPS로 
 |---|---|---|
 | `/_next/image` | `url`, `w`, `q`, `Accept`별 캐시, 쿠키 제외 | `HostHeaderOnly` |
 | `/_next/static/*` | `CachingOptimized`, 압축 활성화 | `HostHeaderOnly` |
-| 그 외: HTML, RSC, API, 원본 PNG | `CachingDisabled` | `AllViewer` |
+| 그 외: HTML, RSC, API, 원본 PNG | `CachingDisabled` | `AllViewerAndCloudFrontHeaders-2022-06` |
+
+기본 경로는 `CloudFront-Viewer-Country` 같은 CloudFront 생성 헤더까지 origin에 전달합니다.
+MBTI 웹이 이 헤더로 한국어·영어를 고르므로, 같은 주소가 국가별로 다른 HTML을 응답합니다.
+기본 경로의 캐시를 켜려면 국가 헤더를 캐시 키에 넣어야 합니다.
 
 이미지 캐시 TTL은 최소·기본 0초, 최대 365일이며 origin의 `Cache-Control`을 따릅니다.
 따라서 기존 앵무새 이미지의 4시간 TTL도 유지됩니다.

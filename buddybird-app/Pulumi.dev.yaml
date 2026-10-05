@@ -23,6 +23,7 @@ config:
   buddybird-app:supabaseUrl: https://ksjyuunszwetaolrlcsy.supabase.co
   buddybird-app:supabasePublishableKey: sb_publishable_pJpDmV_bolQCFKS3-kZMNQ_CdojqTPE
   buddybird-app:googleClientId: 174796393695-5r4rkiuss4aariqiiuap78uct3k44jia.apps.googleusercontent.com
+  buddybird-app:marketingContact: joynnovate@gmail.com
   buddybird-app:appleClientIds: '["com.joynnovate.buddybird.dev"]'
   buddybird-app:appleTeamId: 73TZC3K2JG
   buddybird-app:appleKeyId: T3ZFB6J55W

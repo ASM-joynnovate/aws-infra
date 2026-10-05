@@ -24,7 +24,9 @@ class Bastion(pulumi.ComponentResource):
             owners=["amazon"],
             most_recent=True,
             filters=[
-                aws.ec2.GetAmiFilterArgs(name="name", values=["al2023-ami-*-arm64"]),
+                aws.ec2.GetAmiFilterArgs(
+                    name="name", values=["al2023-ami-2023.*-arm64"]
+                ),
                 aws.ec2.GetAmiFilterArgs(name="architecture", values=["arm64"]),
                 aws.ec2.GetAmiFilterArgs(name="virtualization-type", values=["hvm"]),
             ],

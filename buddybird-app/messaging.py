@@ -46,6 +46,7 @@ TICK_SCHEDULE = "rate(1 minute)"
 TICK_MESSAGES = [
     ("withdrawal-dispatch", "withdrawal.dispatch"),
     ("heartbeat-check", "session.check_heartbeats"),
+    ("push-dispatch", "push.dispatch"),
 ]
 
 

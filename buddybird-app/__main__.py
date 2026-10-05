@@ -24,6 +24,7 @@ APP_ENVIRONMENT_CONFIG_KEYS = {
     "appleClientIds": "APPLE_CLIENT_IDS",
     "appleTeamId": "APPLE_TEAM_ID",
     "appleKeyId": "APPLE_KEY_ID",
+    "marketingContact": "MARKETING_CONTACT",
 }
 APP_SECRET_CONFIG_KEYS = {
     "backofficePassword": "backoffice_password",

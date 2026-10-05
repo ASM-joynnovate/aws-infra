@@ -31,6 +31,7 @@ config:
   buddybird-app:supabaseUrl: https://iiadbuftuingqcjwtlvq.supabase.co
   buddybird-app:supabasePublishableKey: sb_publishable_ohDoOGndX9uP0vha9GwL6w_PDUP0H2g
   buddybird-app:googleClientId: 125131174181-57dp3od7a6htdhe1uoe581ho4e8leag1.apps.googleusercontent.com
+  buddybird-app:marketingContact: joynnovate@gmail.com
   buddybird-app:appleClientIds: '["com.joynnovate.buddybird"]'
   buddybird-app:appleTeamId: 73TZC3K2JG
   buddybird-app:appleKeyId: KQCQD8Q46G

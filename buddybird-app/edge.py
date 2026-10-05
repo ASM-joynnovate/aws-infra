@@ -348,8 +348,9 @@ class MbtiCdn(pulumi.ComponentResource):
         caching_disabled = aws.cloudfront.get_cache_policy_output(
             name="Managed-CachingDisabled"
         )
-        all_viewer = aws.cloudfront.get_origin_request_policy_output(
-            name="Managed-AllViewer"
+        # MBTI 웹이 CloudFront-Viewer-Country로 언어를 고르므로 CloudFront 생성 헤더까지 전달한다.
+        all_viewer_with_country = aws.cloudfront.get_origin_request_policy_output(
+            name="Managed-AllViewerAndCloudFrontHeaders-2022-06"
         )
         host_only = aws.cloudfront.get_origin_request_policy_output(
             name="Managed-HostHeaderOnly"
@@ -388,7 +389,7 @@ class MbtiCdn(pulumi.ComponentResource):
                 cached_methods=["GET", "HEAD"],
                 compress=True,
                 cache_policy_id=caching_disabled.id,
-                origin_request_policy_id=all_viewer.id,
+                origin_request_policy_id=all_viewer_with_country.id,
             ),
             ordered_cache_behaviors=[
                 aws.cloudfront.DistributionOrderedCacheBehaviorArgs(

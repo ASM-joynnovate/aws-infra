@@ -42,7 +42,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `WebService` | `mbti-web-prod` | `prod` | backoffice frontend와 같음 |
 | `MbtiCdn` | `mbti-cdn-prod` | `prod` | 이미지 캐시 정책, CloudFront |
 | `Messaging` | `messaging-<스택>` | `dev`, `prod` | SQS 큐와 DLQ, DLQ 알람, 알람 topic, 업로드 이벤트 rule, 1분 주기 스케줄 |
-| `NightlyStop` | `nightly-stop-dev` | `dev` | EventBridge Scheduler 4개, 실행 역할과 정책 |
+| `NightlyStop` | `nightly-stop-dev` | `dev` | EventBridge Scheduler 5개, DB 시작 실패 DLQ와 알람, 실행 역할과 정책 |
 | `Landing` | `landing-prod` | `prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 
 ## 환경
@@ -63,11 +63,17 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 |---|---|---|
 | 03:00 | `jn-buddybird-dev-stop-service` | api 서비스 `desiredCount` 0 |
 | 03:05 | `jn-buddybird-dev-stop-db` | RDS 정지 |
-| 08:50 | `jn-buddybird-dev-start-db` | RDS 시작 |
-| 09:00 | `jn-buddybird-dev-start-service` | api 서비스 `desiredCount` 1 |
+| 07:30 | `jn-buddybird-dev-start-db` | RDS 시작 |
+| 07:45 | `jn-buddybird-dev-start-db-retry` | RDS 시작 재시도 |
+| 08:00 | `jn-buddybird-dev-start-service` | api 서비스 `desiredCount` 1 |
 
-실행 역할은 `jn-buddybird-dev-nightly-stop`이고 해당 스택의 api 서비스와 RDS 인스턴스에만 권한이 있습니다.
-03시부터 09시 사이에는 dev 배포의 마이그레이션 task와 dev 스택의 RDS 변경이 실패합니다.
+Scheduler는 RDS가 반환한 클라이언트 오류를 재시도하지 않습니다.
+07:30 시작이 실패하면 07:45 스케줄이 한 번 더 시작하고, 07:30 실패 내용은 DLQ `jn-buddybird-dev-nightly-stop-dlq`에 14일간 남습니다.
+DLQ에 메시지가 들어오면 `jn-buddybird-dev-alarms` topic으로 팀 이메일을 발송합니다.
+07:30 시작이 성공한 날에는 07:45 호출이 `InvalidDBInstanceState` 오류로 끝나며 DB 상태는 바뀌지 않습니다.
+
+실행 역할은 `jn-buddybird-dev-nightly-stop`이고 해당 스택의 api 서비스, RDS 인스턴스, DLQ에만 권한이 있습니다.
+03시부터 08시 사이에는 dev 배포의 마이그레이션 task와 dev 스택의 RDS 변경이 실패합니다.
 
 ### 스택 config
 
@@ -83,7 +89,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `localDataBucket` | `true`인 스택에 로컬 개발용 데이터 버킷 생성 | X |
 | `dbDeletionProtection` | `true`이면 RDS 삭제 보호와 최종 스냅샷 사용 | X |
 | `mbtiCdnEnabled` | `true`이면 mbti DNS를 MBTI CloudFront로 연결 | X |
-| `nightlyStop` | `true`인 스택의 api 서비스와 RDS를 매일 03시에 정지하고 09시에 시작 | X |
+| `nightlyStop` | `true`인 스택의 api 서비스와 RDS를 매일 03시에 정지하고 08시에 시작 | X |
 | `consumerSeparate` | `true`이면 consumer를 별도 ECS 서비스로 생성. 없으면 api task의 두 번째 컨테이너로 실행 | X |
 | `supabaseUrl`, `supabasePublishableKey`, `googleClientId`, `appleClientIds`, `appleTeamId`, `appleKeyId` | api와 consumer의 환경 변수 값 | O |
 | `supabaseSecretKey`, `oauthCredentialsKey`, `googleClientSecret`, `applePrivateKey`, `kakaoAdminKey`, `fcmServiceAccountJson`, `sentryDsn` | 앱 시크릿에 저장하는 secret | O |

@@ -72,6 +72,7 @@ class Messaging(pulumi.ComponentResource):
             name=f"{args.name_prefix}-alarms",
             opts=child,
         )
+        self.alarm_topic = alarm_topic
 
         for index, email in enumerate(args.alarm_emails):
             aws.sns.TopicSubscription(

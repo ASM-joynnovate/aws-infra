@@ -176,6 +176,7 @@ if nightly_stop_enabled:
             cluster_arn=cluster_arn,
             service=api.service,
             database=api.database.instance,
+            alarm_topic_arn=messaging.alarm_topic.arn,
         ),
     )
 

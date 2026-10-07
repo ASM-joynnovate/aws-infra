@@ -33,6 +33,12 @@ MBTI_WEB_DEPLOY_SUBS = [
     f"{MBTI_WEB_SUB_PREFIX}:environment:prod",
 ]
 
+AUDIO_AI_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-ai-api@1367456561"
+AUDIO_AI_DEPLOY_SUBS = [
+    f"{AUDIO_AI_SUB_PREFIX}:ref:refs/heads/main",
+    f"{AUDIO_AI_SUB_PREFIX}:ref:refs/heads/dev",
+]
+
 ECR_PUSH_ACTIONS = [
     "ecr:BatchCheckLayerAvailability",
     "ecr:BatchGetImage",
@@ -58,6 +64,7 @@ class ImageDeliveryArgs:
     cluster_name: str
     prefix: str
     migration_cluster_arn: pulumi.Input[str] | None = None
+    lambda_function: bool = False
 
 
 def _deploy_policy(
@@ -81,6 +88,25 @@ def _deploy_policy(
             actions=ECR_PUSH_ACTIONS,
             resources=[repository_arn],
         ),
+    ]
+
+    if args.lambda_function:
+        statements.append(
+            GetPolicyDocumentStatementArgs(
+                sid="UpdateFunctionCode",
+                effect=PolicyStatementEffect.ALLOW,
+                actions=[
+                    "lambda:UpdateFunctionCode",
+                    "lambda:GetFunction",
+                    "lambda:GetFunctionConfiguration",
+                ],
+                resources=[f"arn:aws:lambda:{region}:{account_id}:function:{prefix}-*"],
+            )
+        )
+
+        return aws.iam.get_policy_document_output(statements=statements).json
+
+    statements += [
         GetPolicyDocumentStatementArgs(
             sid="RegisterTaskDefinition",
             effect=PolicyStatementEffect.ALLOW,
@@ -223,7 +249,11 @@ class ImageDelivery(pulumi.ComponentResource):
         self.deploy_role = aws.iam.Role(
             f"{name}-deploy-role",
             name=args.role_name,
-            description=f"buddybird-{name} GitHub Actions image push and ECS service update",
+            description=(
+                f"buddybird-{name} GitHub Actions image push and Lambda function update"
+                if args.lambda_function
+                else f"buddybird-{name} GitHub Actions image push and ECS service update"
+            ),
             assume_role_policy=trust_policy(args.account_id, list(args.subs)),
             opts=pulumi.ResourceOptions.merge(
                 child,

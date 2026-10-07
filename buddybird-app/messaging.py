@@ -22,7 +22,7 @@ PERIODIC_COMMAND = "periodic-command"
 
 QUEUE_VISIBILITY_TIMEOUTS = {
     UPLOAD_CONFIRMATION: 60,
-    PARROT_SOUND_DETECTION: 300,
+    PARROT_SOUND_DETECTION: 360,
     MIMICRY_JUDGMENT: 300,
     JUDGMENT_RESULT: 30,
     NOTIFICATION: 30,
@@ -84,6 +84,7 @@ class Messaging(pulumi.ComponentResource):
             )
 
         self.queues: dict[str, aws.sqs.Queue] = {}
+        self.dead_letter_queues: dict[str, aws.sqs.Queue] = {}
 
         for suffix, visibility_timeout in QUEUE_VISIBILITY_TIMEOUTS.items():
             dead_letter_queue = aws.sqs.Queue(
@@ -92,6 +93,8 @@ class Messaging(pulumi.ComponentResource):
                 message_retention_seconds=DLQ_RETENTION_SECONDS,
                 opts=child,
             )
+
+            self.dead_letter_queues[suffix] = dead_letter_queue
 
             self.queues[suffix] = aws.sqs.Queue(
                 f"{name}-{suffix}",

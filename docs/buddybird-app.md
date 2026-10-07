@@ -1,6 +1,6 @@
 # buddybird-app
 
-buddybird 전용 RDS, ECS 서비스, CloudFront 구성
+buddybird 전용 RDS, ECS 서비스, Lambda 함수, CloudFront 구성
 
 ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-shared` 프로젝트가 소유합니다.
 이 문서는 서비스별로 구성돼 있어 `buddybird-shared`가 소유한 리소스도 해당 서비스 절에 함께 적습니다.
@@ -15,7 +15,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 |---|---|
 | `__main__.py` | 상수, 환경별 설정, 컴포넌트 조립, 출력값 |
 | `data.py` | `DataBucket`, `Database` 컴포넌트, 버킷 하드닝 |
-| `service.py` | `Api`, `WebService` 컴포넌트, 로그 그룹과 실행 역할과 Fargate 서비스 헬퍼 |
+| `service.py` | `Api`, `WebService`, `AudioAi` 컴포넌트, 로그 그룹과 실행 역할과 Fargate 서비스 헬퍼 |
 | `edge.py` | `Landing`, `MbtiCdn` 컴포넌트 |
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
 | `dns.py` | Cloudflare CNAME 레코드 |
@@ -40,6 +40,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `Database` | `api-<스택>-database` | `dev`, `prod` | RDS 인스턴스, readonly 시크릿 |
 | `WebService` | `backoffice-frontend-prod` | `prod` | 로그 그룹, 실행 역할, task definition, 타깃 그룹, 리스너 규칙, ECS 서비스, DNS |
 | `WebService` | `mbti-web-prod` | `prod` | backoffice frontend와 같음 |
+| `AudioAi` | `audio-ai-<스택>` | `audioAi`가 있는 스택 | 로그 그룹, 실행 역할과 정책, Lambda 함수, SQS 트리거 |
 | `MbtiCdn` | `mbti-cdn-prod` | `prod` | 이미지 캐시 정책, CloudFront |
 | `Messaging` | `messaging-<스택>` | `dev`, `prod` | SQS 큐와 DLQ, DLQ 알람, 알람 topic, 업로드 이벤트 rule, 1분 주기 스케줄 |
 | `NightlyStop` | `nightly-stop-dev` | `dev` | EventBridge Scheduler 5개, DB 시작 실패 DLQ와 알람, 실행 역할과 정책 |
@@ -85,6 +86,7 @@ DLQ에 메시지가 들어오면 `jn-buddybird-dev-alarms` topic으로 팀 이�
 | `api` | `subdomain`, `priority`, `capacity`. `subdomain`이 없으면 루트 도메인 | O |
 | `backofficeFrontend` | `subdomain`, `priority`, `capacity`. 키가 있는 스택에만 backoffice frontend 생성 | X |
 | `mbtiWeb` | `subdomain`, `priority`. 키가 있는 스택에만 mbti web과 MBTI CloudFront 생성 | X |
+| `audioAi` | `maximumConcurrency`. 키가 있는 스택에만 audio-ai Lambda 함수와 SQS 트리거 생성 | X |
 | `landing` | `true`인 스택에만 랜딩 생성 | X |
 | `localDataBucket` | `true`인 스택에 로컬 개발용 데이터 버킷 생성 | X |
 | `dbDeletionProtection` | `true`이면 RDS 삭제 보호와 최종 스냅샷 사용 | X |
@@ -130,6 +132,8 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | mbti web: ECS 서비스, task definition, 타깃 그룹 | `jn-buddybird-mbti-prod` |
 | mbti web: execution role | `jn-buddybird-mbti-prod-exec` |
 | mbti web: 로그 그룹 | `/ecs/jn-buddybird-mbti-prod` |
+| audio-ai: Lambda 함수, 실행 역할 | `jn-buddybird-audio-ai-<env>` |
+| audio-ai: 로그 그룹 | `/aws/lambda/jn-buddybird-audio-ai-<env>` |
 
 ### 공통 이름
 
@@ -141,6 +145,8 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | backoffice frontend 배포 역할 | `jn-buddybird-backoffice-frontend-deploy` | `buddybird-shared` |
 | mbti web ECR 저장소 | `jn-buddybird-mbti` | `buddybird-shared` |
 | mbti web 배포 역할 | `jn-buddybird-mbti-deploy` | `buddybird-shared` |
+| audio-ai ECR 저장소 | `jn-buddybird-audio-ai` | `buddybird-shared` |
+| audio-ai 배포 역할 | `jn-buddybird-audio-ai-deploy` | `buddybird-shared` |
 | RDS 서브넷 그룹 | `jn-buddybird-api` | `buddybird-shared` |
 | 랜딩 버킷 | `jn-buddybird-site-<계정>-<리전>` | `buddybird-app` |
 | 랜딩 배포 역할 | `jn-buddybird-site-deploy` | `buddybird-app` |
@@ -288,6 +294,7 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | `APPLE_TEAM_ID` | 스택 config `appleTeamId` |
 | `APPLE_KEY_ID` | 스택 config `appleKeyId` |
 | `SQS_<큐 이름>_QUEUE_URL` | 큐 URL 7개. 큐 이름은 대문자로 쓰고 `-`를 `_`로 변경. 예: `SQS_PERIODIC_COMMAND_QUEUE_URL` |
+| `SQS_PARROT_SOUND_DETECTION_DLQ_URL` | `parrot-sound-detection-dlq` 큐 URL |
 
 ### 시크릿
 
@@ -309,7 +316,7 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | api | 데이터 버킷 객체 | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:PutObjectTagging` |
 | api | `notification`, `withdrawal` 큐 | `sqs:SendMessage` |
 | api | KVS 채널 `jn-buddybird-<env>-*` | 시그널링 채널 생성, 조회, 삭제와 `ConnectAsMaster`, `ConnectAsViewer`, `GetIceServerConfig` |
-| consumer | `upload-confirmation`, `judgment-result`, `notification`, `withdrawal`, `periodic-command` 큐 | 수신, 삭제, visibility 변경, 속성 조회 |
+| consumer | `upload-confirmation`, `judgment-result`, `notification`, `withdrawal`, `periodic-command`, `parrot-sound-detection-dlq` 큐 | 수신, 삭제, visibility 변경, 속성 조회 |
 | consumer | `parrot-sound-detection`, `mimicry-judgment`, `notification`, `withdrawal` 큐 | `sqs:SendMessage` |
 | consumer | 데이터 버킷 객체 | api와 같음 |
 
@@ -339,14 +346,16 @@ ECS는 종료된 consumer 컨테이너를 다시 시작하지 않으므로 dev a
 | 큐 | 읽는 프로세스 | 메시지 | 보내는 쪽 | visibility timeout |
 |---|---|---|---|---|
 | `upload-confirmation` | consumer | S3 Object Created 이벤트 | 데이터 버킷의 EventBridge rule | 60초 |
-| `parrot-sound-detection` | 1단계 판정 worker | 명령 `sound.classify` | consumer | 300초 |
+| `parrot-sound-detection` | audio-ai | 명령 `audio.detect_parrot` | consumer | 360초 |
 | `mimicry-judgment` | 2단계 판정 worker | 명령 `sound.judge_mimicry` | consumer | 300초 |
-| `judgment-result` | consumer | 이벤트 `sound.classified`, `sound.mimicry_judged` | 판정 worker | 30초 |
+| `judgment-result` | consumer | 이벤트 `audio.parrot_detected`, `sound.mimicry_judged` | audio-ai, 2단계 판정 worker | 30초 |
 | `notification` | consumer | 명령 `notification.send` | api, consumer | 30초 |
 | `withdrawal` | consumer | 명령 `withdrawal.process` | api, consumer | 300초 |
 | `periodic-command` | consumer | 명령 `withdrawal.dispatch`, `session.check_heartbeats` | 1분 주기 스케줄 | 30초 |
 
-판정 큐 두 개의 300초는 초기값이며 모델의 처리 시간이 나오면 조정합니다.
+`parrot-sound-detection`의 360초는 audio-ai 함수 제한 시간 60초의 6배이고, AWS가 SQS 트리거에 권장하는 최소값입니다.
+`mimicry-judgment`의 300초는 초기값이며 모델의 처리 시간이 나오면 조정합니다.
+consumer는 `parrot-sound-detection-dlq`도 읽어 앵무새 소리 판정에 실패한 소리를 failed로 표시합니다.
 메시지 type은 `<대상>.<동사>` 형태이고 명령은 명령형으로, 이벤트는 과거형으로 짓습니다.
 
 | 항목 | 값 |
@@ -363,6 +372,89 @@ ECS는 종료된 consumer 컨테이너를 다시 시작하지 않으므로 dev a
 변환된 이미지와 서버 내부 업로드의 key는 업로드 이벤트 조건에 해당하지 않으므로 이벤트가 반복되지 않습니다.
 첫 적용 뒤 수신 메일에서 구독을 승인해야 알람 메일을 받습니다.
 큐 URL은 stack output `queue_urls`로 조회합니다.
+
+## audio-ai
+
+`buddybird-ai-api` 레포지토리의 Lambda 함수입니다.
+`parrot-sound-detection` 큐의 요청을 받아 앵무새 소리 판정을 실행하고, 결과를 `judgment-result` 큐로 보냅니다.
+Lambda 함수와 SQS 트리거는 스택 config `audioAi`가 있는 스택에만 만듭니다.
+
+### ECR 저장소
+
+| 항목 | 값 |
+|---|---|
+| 이름 | `jn-buddybird-audio-ai` |
+| 태그 변경 | IMMUTABLE |
+| 스캔 | 푸시 시 |
+| 태그 없는 이미지 | 7일 후 삭제 |
+| 보관 | 최근 20개 |
+
+ECR 저장소 정책은 Pulumi가 관리하지 않습니다.
+이 저장소의 이미지로 함수를 처음 만들 때 Lambda가 `lambda.amazonaws.com`의 이미지 읽기를 허용하는 statement를 저장소 정책에 직접 추가합니다.
+나중에 이 저장소 정책을 Pulumi로 관리하게 되면 이 statement도 코드에 넣어야 합니다.
+넣지 않으면 Pulumi가 정책을 적용할 때 이 statement가 지워지고, audio-ai 함수가 이미지를 가져오지 못합니다.
+
+### 배포 역할
+
+#### 신뢰 정책
+
+- 이름: `jn-buddybird-audio-ai-deploy`
+- `buddybird-ai-api` 레포지토리
+  - `ref:refs/heads/main`
+  - `ref:refs/heads/dev`
+
+#### 권한
+
+| 대상 | 액션 |
+|---|---|
+| `*` | `ecr:GetAuthorizationToken` |
+| ECR 저장소 | 레이어 업로드, `ecr:PutImage`, `ecr:DescribeImages` |
+| Lambda 함수 `jn-buddybird-audio-ai-*` | `lambda:UpdateFunctionCode`, `lambda:GetFunction`, `lambda:GetFunctionConfiguration` |
+
+### Lambda 함수
+
+| 항목 | 값 |
+|---|---|
+| 패키지 | 컨테이너 이미지 |
+| 아키텍처 | arm64 |
+| memory | 4096MB |
+| 제한 시간 | 60초 |
+| VPC | X |
+| 이미지 태그 | `<env>-bootstrap` |
+| 로그 그룹 | `/aws/lambda/jn-buddybird-audio-ai-<env>`, 30일 보관 |
+
+함수를 만들기 전에 ECR에 `<env>-bootstrap` 태그 이미지가 있어야 합니다.
+Lambda는 image index로 push된 이미지를 받지 않으므로, bootstrap 이미지는 `--platform linux/arm64 --provenance=false`로 빌드해 push합니다.
+Pulumi는 함수의 `imageUri`를 `ignoreChanges`로 제외하고, 이후 이미지는 `buddybird-ai-api`의 deploy 워크플로가 바꿉니다.
+
+### 환경 변수
+
+| 변수 | 값 |
+|---|---|
+| `APP_ENV` | `dev` 또는 `prod` |
+| `AUDIO_S3_BUCKET` | 데이터 버킷 이름 |
+| `SQS_JUDGMENT_RESULT_QUEUE_URL` | `judgment-result` 큐 URL |
+
+### 실행 역할 권한
+
+| 대상 | 액션 |
+|---|---|
+| CloudWatch Logs | `AWSLambdaBasicExecutionRole` |
+| 데이터 버킷 `user/*/session/*` 객체 | `s3:GetObject` |
+| `parrot-sound-detection` 큐 | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
+| `judgment-result` 큐 | `sqs:SendMessage` |
+
+### SQS 트리거
+
+| 항목 | 값 |
+|---|---|
+| 큐 | `parrot-sound-detection` |
+| 배치 크기 | 10 |
+| 응답 유형 | `ReportBatchItemFailures` |
+| 최대 동시 실행 | 스택 config `audioAi.maximumConcurrency` |
+
+함수가 `batchItemFailures`로 돌려준 메시지는 삭제되지 않고, visibility timeout 360초가 지나면 다시 처리됩니다.
+5번 실패한 메시지는 `parrot-sound-detection-dlq`로 옮겨집니다.
 
 ## backoffice frontend
 
@@ -610,6 +702,7 @@ pulumi up --stack prod
 | backoffice frontend | `buddybird-backoffice-frontend` GitHub Actions |
 | mbti web | `buddybird-mbti-web` GitHub Actions |
 | 랜딩 | `buddybird-landing` GitHub Actions |
+| audio-ai | `buddybird-ai-api` GitHub Actions |
 
 ECS 서비스의 `desiredCount`는 Pulumi가 변경하지 않습니다.
 prod api는 최초 1회 아래 명령으로 task를 2개로 설정합니다.
@@ -658,6 +751,13 @@ dev 스택에는 backoffice frontend 서비스가 없습니다.
 |---|---|
 | release-please 릴리즈 PR merge | 이미지 빌드와 ECR push 후 prod 서비스 갱신 |
 
+### audio-ai 배포
+
+| 트리거 | 동작 |
+|---|---|
+| release-please 릴리즈 PR 머지(dev) | 이미지 빌드와 ECR 푸시 → dev 함수 이미지 변경 |
+| push to main | prod 함수 이미지 변경 |
+
 ### 수동 단계
 
 첫 적용 전에 스택마다 secret을 저장합니다.
@@ -703,5 +803,5 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly;
 ### 최초 구축 순서
 
 1. `buddybird-shared` 적용
-2. api ECR에 `bootstrap` 태그로, backoffice frontend ECR에 `dev-bootstrap`과 `prod-bootstrap` 태그로, mbti web ECR에 `prod-bootstrap` 태그로 이미지 푸시
+2. api ECR에 `bootstrap` 태그로, backoffice frontend ECR에 `dev-bootstrap`과 `prod-bootstrap` 태그로, mbti web ECR에 `prod-bootstrap` 태그로, audio-ai ECR에 `dev-bootstrap`과 `prod-bootstrap` 태그로 이미지 푸시
 3. `buddybird-app` 적용

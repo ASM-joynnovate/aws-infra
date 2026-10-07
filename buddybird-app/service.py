@@ -454,6 +454,135 @@ class WebService(pulumi.ComponentResource):
         self.register_outputs({"service": self.service})
 
 
+@dataclass(frozen=True)
+class AudioAiArgs:
+    env: str
+    function_name: str
+    image: pulumi.Input[str]
+    data_bucket: aws.s3.Bucket
+    queues: Mapping[str, aws.sqs.Queue]
+    maximum_concurrency: int
+
+
+class AudioAi(pulumi.ComponentResource):
+    def __init__(
+        self,
+        name: str,
+        args: AudioAiArgs,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
+        super().__init__("joynnovate:buddybird:AudioAi", name, None, opts)
+        child = pulumi.ResourceOptions(parent=self)
+        replaceable = pulumi.ResourceOptions.merge(
+            child, pulumi.ResourceOptions(delete_before_replace=True)
+        )
+        request_queue = args.queues[PARROT_SOUND_DETECTION]
+        result_queue = args.queues[JUDGMENT_RESULT]
+
+        log_group(
+            name,
+            log_group_name=f"/aws/lambda/{args.function_name}",
+            opts=child,
+        )
+
+        role = aws.iam.Role(
+            f"{name}-role",
+            name=args.function_name,
+            description=f"buddybird-audio-ai {args.env} sound analysis",
+            assume_role_policy=aws.iam.get_policy_document(
+                statements=[
+                    GetPolicyDocumentStatementArgs(
+                        effect=PolicyStatementEffect.ALLOW,
+                        actions=["sts:AssumeRole"],
+                        principals=[
+                            GetPolicyDocumentStatementPrincipalArgs(
+                                type="Service", identifiers=["lambda.amazonaws.com"]
+                            )
+                        ],
+                    )
+                ]
+            ).json,
+            opts=replaceable,
+        )
+
+        aws.iam.RolePolicyAttachment(
+            f"{name}-role-logs",
+            role=role.name,
+            policy_arn=aws.iam.ManagedPolicy.AWS_LAMBDA_BASIC_EXECUTION_ROLE,
+            opts=child,
+        )
+
+        policy = aws.iam.RolePolicy(
+            f"{name}-role-policy",
+            role=role.name,
+            policy=aws.iam.get_policy_document_output(
+                statements=[
+                    GetPolicyDocumentStatementArgs(
+                        effect=PolicyStatementEffect.ALLOW,
+                        actions=["s3:GetObject"],
+                        resources=[
+                            pulumi.Output.format(
+                                "{0}/user/*/session/*", args.data_bucket.arn
+                            )
+                        ],
+                    ),
+                    GetPolicyDocumentStatementArgs(
+                        effect=PolicyStatementEffect.ALLOW,
+                        actions=[
+                            "sqs:ReceiveMessage",
+                            "sqs:DeleteMessage",
+                            "sqs:GetQueueAttributes",
+                        ],
+                        resources=[request_queue.arn],
+                    ),
+                    GetPolicyDocumentStatementArgs(
+                        effect=PolicyStatementEffect.ALLOW,
+                        actions=["sqs:SendMessage"],
+                        resources=[result_queue.arn],
+                    ),
+                ]
+            ).json,
+            opts=child,
+        )
+
+        function = aws.lambda_.Function(
+            f"{name}-function",
+            name=args.function_name,
+            role=role.arn,
+            package_type="Image",
+            image_uri=args.image,
+            architectures=["arm64"],
+            memory_size=4096,
+            timeout=60,
+            environment=aws.lambda_.FunctionEnvironmentArgs(
+                variables={
+                    "APP_ENV": args.env,
+                    "AUDIO_S3_BUCKET": args.data_bucket.id,
+                    "SQS_JUDGMENT_RESULT_QUEUE_URL": result_queue.url,
+                }
+            ),
+            opts=pulumi.ResourceOptions.merge(
+                replaceable, pulumi.ResourceOptions(ignore_changes=["imageUri"])
+            ),
+        )
+
+        aws.lambda_.EventSourceMapping(
+            f"{name}-event-source-mapping",
+            event_source_arn=request_queue.arn,
+            function_name=function.arn,
+            batch_size=10,
+            function_response_types=["ReportBatchItemFailures"],
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=args.maximum_concurrency
+            ),
+            opts=pulumi.ResourceOptions.merge(
+                child, pulumi.ResourceOptions(depends_on=[policy])
+            ),
+        )
+
+        self.register_outputs({})
+
+
 def _queue_url_variable(suffix: str) -> str:
     return f"SQS_{suffix.upper().replace('-', '_')}_QUEUE_URL"
 
@@ -487,6 +616,10 @@ def _container(
                 {"name": _queue_url_variable(suffix), "value": url}
                 for suffix, url in a["queue_urls"].items()
             ],
+            {
+                "name": "SQS_PARROT_SOUND_DETECTION_DLQ_URL",
+                "value": a["parrot_sound_detection_dlq_url"],
+            },
         ],
         "secrets": [
             {"name": "DB_PASSWORD", "valueFrom": f"{a['db_secret']}:password::"},
@@ -540,6 +673,7 @@ class ApiArgs:
     listener_arn: pulumi.Input[str]
     name_prefix: str
     queues: Mapping[str, aws.sqs.Queue]
+    dead_letter_queues: Mapping[str, aws.sqs.Queue]
     dns_target: pulumi.Input[str] | None = None
     local_data_cors_origins: Sequence[str] | None = None
     capacity: str = DEFAULT_CAPACITY
@@ -707,7 +841,10 @@ class Api(pulumi.ComponentResource):
             GetPolicyDocumentStatementArgs(
                 effect=PolicyStatementEffect.ALLOW,
                 actions=SQS_RECEIVE_ACTIONS,
-                resources=[args.queues[q].arn for q in CONSUMER_RECEIVE_QUEUES],
+                resources=[
+                    *[args.queues[q].arn for q in CONSUMER_RECEIVE_QUEUES],
+                    args.dead_letter_queues[PARROT_SOUND_DETECTION].arn,
+                ],
             ),
             GetPolicyDocumentStatementArgs(
                 effect=PolicyStatementEffect.ALLOW,
@@ -764,6 +901,9 @@ class Api(pulumi.ComponentResource):
             db_secret=db_secret_arn,
             app_secret=app_secret.arn,
             queue_urls={suffix: queue.url for suffix, queue in args.queues.items()},
+            parrot_sound_detection_dlq_url=args.dead_letter_queues[
+                PARROT_SOUND_DETECTION
+            ].url,
         )
 
         def api_container(a: dict) -> dict:

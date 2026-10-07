@@ -7,7 +7,15 @@ from data import LOCAL_CORS_ORIGINS, ROOT_DOMAIN, data_bucket_name
 from edge import Landing, LandingArgs, MbtiCdn, MbtiCdnArgs
 from messaging import Messaging, MessagingArgs
 from schedule import NightlyStop, NightlyStopArgs
-from service import DEFAULT_CAPACITY, Api, ApiArgs, WebService, WebServiceArgs
+from service import (
+    DEFAULT_CAPACITY,
+    Api,
+    ApiArgs,
+    AudioAi,
+    AudioAiArgs,
+    WebService,
+    WebServiceArgs,
+)
 
 PREFIX = "jn-buddybird"
 API_PREFIX = f"{PREFIX}-api"
@@ -55,6 +63,7 @@ config = pulumi.Config()
 api_settings = config.require_object("api")
 backoffice_frontend_settings = config.get_object("backofficeFrontend")
 mbti_web_settings = config.get_object("mbtiWeb")
+audio_ai_settings = config.get_object("audioAi")
 landing_enabled = config.get_bool("landing") or False
 local_data_bucket_enabled = config.get_bool("localDataBucket") or False
 db_deletion_protection = config.get_bool("dbDeletionProtection") or False
@@ -141,6 +150,7 @@ api = Api(
         capacity=api_settings.get("capacity", DEFAULT_CAPACITY),
         name_prefix=f"{PREFIX}-{env}",
         queues=messaging.queues,
+        dead_letter_queues=messaging.dead_letter_queues,
         consumer_separate=consumer_separate,
     ),
 )
@@ -165,6 +175,21 @@ if backoffice_frontend_settings is not None:
             cluster_arn=cluster_arn,
             listener_arn=https_listener_arn,
             capacity=backoffice_frontend_settings.get("capacity", DEFAULT_CAPACITY),
+        ),
+    )
+
+if audio_ai_settings is not None:
+    AudioAi(
+        f"audio-ai-{env}",
+        AudioAiArgs(
+            env=env,
+            function_name=f"{PREFIX}-audio-ai-{env}",
+            image=pulumi.Output.concat(
+                shared.require_output("audio_ai_repository_url"), f":{env}-bootstrap"
+            ),
+            data_bucket=api.data.bucket,
+            queues=messaging.queues,
+            maximum_concurrency=audio_ai_settings["maximumConcurrency"],
         ),
     )
 

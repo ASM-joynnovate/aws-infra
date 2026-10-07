@@ -87,6 +87,7 @@ DLQ에 메시지가 들어오면 `jn-buddybird-dev-alarms` topic으로 팀 이�
 | `backofficeFrontend` | `subdomain`, `priority`, `capacity`. 키가 있는 스택에만 backoffice frontend 생성 | X |
 | `mbtiWeb` | `subdomain`, `priority`. 키가 있는 스택에만 mbti web과 MBTI CloudFront 생성 | X |
 | `audioAi` | `maximumConcurrency`. 키가 있는 스택에만 audio-ai Lambda 함수와 SQS 트리거 생성 | X |
+| `audioAiSentryDsn` | buddybird-audio-ai Sentry 프로젝트의 DSN. `audioAi`가 있는 스택에서 audio-ai Lambda의 환경 변수로 전달하는 secret | X |
 | `landing` | `true`인 스택에만 랜딩 생성 | X |
 | `localDataBucket` | `true`인 스택에 로컬 개발용 데이터 버킷 생성 | X |
 | `dbDeletionProtection` | `true`이면 RDS 삭제 보호와 최종 스냅샷 사용 | X |
@@ -435,6 +436,7 @@ Pulumi는 함수의 `imageUri`를 `ignoreChanges`로 제외하고, 이후 이미
 | `APP_ENV` | `dev` 또는 `prod` |
 | `AUDIO_S3_BUCKET` | 데이터 버킷 이름 |
 | `SQS_JUDGMENT_RESULT_QUEUE_URL` | `judgment-result` 큐 URL |
+| `SENTRY_DSN` | 스택 config `audioAiSentryDsn` |
 
 ### 실행 역할 권한
 

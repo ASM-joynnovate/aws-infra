@@ -462,6 +462,7 @@ class AudioAiArgs:
     data_bucket: aws.s3.Bucket
     queues: Mapping[str, aws.sqs.Queue]
     maximum_concurrency: int
+    sentry_dsn: pulumi.Input[str]
 
 
 class AudioAi(pulumi.ComponentResource):
@@ -547,6 +548,7 @@ class AudioAi(pulumi.ComponentResource):
                     "APP_ENV": args.env,
                     "AUDIO_S3_BUCKET": args.data_bucket.id,
                     "SQS_JUDGMENT_RESULT_QUEUE_URL": result_queue.url,
+                    "SENTRY_DSN": args.sentry_dsn,
                 }
             ),
             opts=pulumi.ResourceOptions.merge(

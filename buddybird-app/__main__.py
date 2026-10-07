@@ -190,6 +190,7 @@ if audio_ai_settings is not None:
             data_bucket=api.data.bucket,
             queues=messaging.queues,
             maximum_concurrency=audio_ai_settings["maximumConcurrency"],
+            sentry_dsn=config.require_secret("audioAiSentryDsn"),
         ),
     )
 

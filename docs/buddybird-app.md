@@ -409,7 +409,7 @@ ECR 저장소 정책은 Pulumi가 관리하지 않습니다.
 |---|---|
 | `*` | `ecr:GetAuthorizationToken` |
 | ECR 저장소 | 레이어 업로드, `ecr:PutImage`, `ecr:DescribeImages` |
-| Lambda 함수 `jn-buddybird-audio-ai-*` | `lambda:UpdateFunctionCode`, `lambda:GetFunction`, `lambda:GetFunctionConfiguration` |
+| Lambda 함수 `jn-buddybird-audio-ai-*` | `lambda:UpdateFunctionCode`, `lambda:GetFunction` |
 
 ### Lambda 함수
 
@@ -424,8 +424,9 @@ ECR 저장소 정책은 Pulumi가 관리하지 않습니다.
 | 로그 그룹 | `/aws/lambda/jn-buddybird-audio-ai-<env>`, 30일 보관 |
 
 함수를 만들기 전에 ECR에 `<env>-bootstrap` 태그 이미지가 있어야 합니다.
+image index는 여러 플랫폼 이미지나 provenance 증명을 하나로 묶은 manifest 목록입니다.
 Lambda는 image index로 push된 이미지를 받지 않으므로, bootstrap 이미지는 `--platform linux/arm64 --provenance=false`로 빌드해 push합니다.
-Pulumi는 함수의 `imageUri`를 `ignoreChanges`로 제외하고, 이후 이미지는 `buddybird-ai-api`의 deploy 워크플로가 바꿉니다.
+Pulumi는 함수의 `imageUri`를 `ignoreChanges`로 제외하고, 이후 이미지는 `buddybird-ai-api`의 deploy 워크플로가 변경합니다.
 
 ### 환경 변수
 

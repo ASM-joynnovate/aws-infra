@@ -114,7 +114,7 @@ def handler(event, context):
 """
 
 
-def _assume_role_policy() -> str:
+def _assume_role_policy(service: str = "ecs-tasks.amazonaws.com") -> str:
     return aws.iam.get_policy_document(
         statements=[
             GetPolicyDocumentStatementArgs(
@@ -122,7 +122,7 @@ def _assume_role_policy() -> str:
                 actions=["sts:AssumeRole"],
                 principals=[
                     GetPolicyDocumentStatementPrincipalArgs(
-                        type="Service", identifiers=["ecs-tasks.amazonaws.com"]
+                        type="Service", identifiers=[service]
                     )
                 ],
             )
@@ -479,7 +479,7 @@ class AudioAi(pulumi.ComponentResource):
         request_queue = args.queues[PARROT_SOUND_DETECTION]
         result_queue = args.queues[JUDGMENT_RESULT]
 
-        log_group(
+        logs = log_group(
             name,
             log_group_name=f"/aws/lambda/{args.function_name}",
             opts=child,
@@ -489,19 +489,7 @@ class AudioAi(pulumi.ComponentResource):
             f"{name}-role",
             name=args.function_name,
             description=f"buddybird-audio-ai {args.env} sound analysis",
-            assume_role_policy=aws.iam.get_policy_document(
-                statements=[
-                    GetPolicyDocumentStatementArgs(
-                        effect=PolicyStatementEffect.ALLOW,
-                        actions=["sts:AssumeRole"],
-                        principals=[
-                            GetPolicyDocumentStatementPrincipalArgs(
-                                type="Service", identifiers=["lambda.amazonaws.com"]
-                            )
-                        ],
-                    )
-                ]
-            ).json,
+            assume_role_policy=_assume_role_policy("lambda.amazonaws.com"),
             opts=replaceable,
         )
 
@@ -562,7 +550,8 @@ class AudioAi(pulumi.ComponentResource):
                 }
             ),
             opts=pulumi.ResourceOptions.merge(
-                replaceable, pulumi.ResourceOptions(ignore_changes=["imageUri"])
+                replaceable,
+                pulumi.ResourceOptions(ignore_changes=["imageUri"], depends_on=[logs]),
             ),
         )
 
@@ -1009,19 +998,7 @@ class Api(pulumi.ComponentResource):
             f"{name}-rotation-role",
             name=rotation_name,
             description=f"buddybird-api {args.env} redeploy on RDS password rotation",
-            assume_role_policy=aws.iam.get_policy_document(
-                statements=[
-                    GetPolicyDocumentStatementArgs(
-                        effect=PolicyStatementEffect.ALLOW,
-                        actions=["sts:AssumeRole"],
-                        principals=[
-                            GetPolicyDocumentStatementPrincipalArgs(
-                                type="Service", identifiers=["lambda.amazonaws.com"]
-                            )
-                        ],
-                    )
-                ]
-            ).json,
+            assume_role_policy=_assume_role_policy("lambda.amazonaws.com"),
             opts=replaceable,
         )
 

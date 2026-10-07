@@ -98,7 +98,6 @@ def _deploy_policy(
                 actions=[
                     "lambda:UpdateFunctionCode",
                     "lambda:GetFunction",
-                    "lambda:GetFunctionConfiguration",
                 ],
                 resources=[f"arn:aws:lambda:{region}:{account_id}:function:{prefix}-*"],
             )

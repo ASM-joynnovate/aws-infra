@@ -24,7 +24,6 @@ BACKOFFICE_FRONTEND_SUB_PREFIX = (
 )
 BACKOFFICE_FRONTEND_DEPLOY_SUBS = [
     f"{BACKOFFICE_FRONTEND_SUB_PREFIX}:ref:refs/heads/main",
-    f"{BACKOFFICE_FRONTEND_SUB_PREFIX}:ref:refs/heads/dev",
 ]
 
 MBTI_WEB_SUB_PREFIX = "repo:ASM-joynnovate@279207361/buddybird-mbti-web@1257251018"

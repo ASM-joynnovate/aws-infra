@@ -381,7 +381,6 @@ ECS는 종료된 consumer 컨테이너를 다시 시작하지 않으므로 dev a
 - 이름: `jn-buddybird-backoffice-frontend-deploy`
 - `buddybird-backoffice-frontend` 레포지토리
   - `ref:refs/heads/main`
-  - `ref:refs/heads/dev`
 
 #### 권한
 
@@ -646,11 +645,7 @@ aws ecs update-service --cluster jn-cluster --service <서비스> \
 
 | 트리거 | 동작 |
 |---|---|
-| release-please 릴리즈 PR 머지(dev) | 이미지 빌드와 ECR 푸시 → dev 서비스 갱신 |
-| push to main | prod 서비스 갱신 |
-
-dev 스택에는 backoffice frontend 서비스가 없습니다.
-`buddybird-backoffice-frontend` 워크플로의 dev 서비스 갱신 단계는 제거해야 합니다.
+| release-please 릴리즈 PR merge | 이미지 빌드와 ECR push 후 prod 서비스 갱신 |
 
 ### mbti web 배포
 

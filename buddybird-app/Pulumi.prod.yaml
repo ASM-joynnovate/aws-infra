@@ -17,6 +17,8 @@ config:
   buddybird-app:api:
     priority: 10
     capacity: on-demand-with-spot
+  buddybird-app:audioAi:
+    maximumConcurrency: 10
   buddybird-app:backofficeFrontend:
     subdomain: backoffice
     priority: 30

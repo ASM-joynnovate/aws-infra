@@ -33,6 +33,7 @@ APP_ENVIRONMENT_CONFIG_KEYS = {
     "appleTeamId": "APPLE_TEAM_ID",
     "appleKeyId": "APPLE_KEY_ID",
     "marketingContact": "MARKETING_CONTACT",
+    "ga4PropertyId": "GA4_PROPERTY_ID",
 }
 APP_SECRET_CONFIG_KEYS = {
     "backofficePassword": "backoffice_password",
@@ -41,8 +42,9 @@ APP_SECRET_CONFIG_KEYS = {
     "googleClientSecret": "google_client_secret",
     "applePrivateKey": "apple_private_key",
     "kakaoAdminKey": "kakao_admin_key",
-    "fcmServiceAccountJson": "fcm_service_account_json",
+    "firebaseServiceAccountJson": "firebase_service_account_json",
     "sentryDsn": "sentry_dsn",
+    "sentryApiToken": "sentry_api_token",
 }
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"

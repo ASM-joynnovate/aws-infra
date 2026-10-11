@@ -102,8 +102,8 @@ class Landing(pulumi.ComponentResource):
         caching_disabled = aws.cloudfront.get_cache_policy_output(
             name="Managed-CachingDisabled"
         )
-        all_viewer = aws.cloudfront.get_origin_request_policy_output(
-            name="Managed-AllViewer"
+        all_viewer_with_country = aws.cloudfront.get_origin_request_policy_output(
+            name="Managed-AllViewerAndCloudFrontHeaders-2022-06"
         )
 
         self.distribution = aws.cloudfront.Distribution(
@@ -160,7 +160,7 @@ class Landing(pulumi.ComponentResource):
                     cached_methods=["GET", "HEAD"],
                     compress=True,
                     cache_policy_id=caching_disabled.id,
-                    origin_request_policy_id=all_viewer.id,
+                    origin_request_policy_id=all_viewer_with_country.id,
                 )
             ],
             custom_error_responses=[

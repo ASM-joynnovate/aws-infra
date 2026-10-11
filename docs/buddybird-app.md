@@ -94,8 +94,8 @@ DLQ에 메시지가 들어오면 `jn-buddybird-dev-alarms` topic으로 팀 이�
 | `mbtiCdnEnabled` | `true`이면 mbti DNS를 MBTI CloudFront로 연결 | X |
 | `nightlyStop` | `true`인 스택의 api 서비스와 RDS를 매일 03시에 정지하고 08시에 시작 | X |
 | `consumerSeparate` | `true`이면 consumer를 별도 ECS 서비스로 생성. 없으면 api task의 두 번째 컨테이너로 실행 | X |
-| `supabaseUrl`, `supabasePublishableKey`, `googleClientId`, `appleClientIds`, `appleTeamId`, `appleKeyId` | api와 consumer의 환경 변수 값 | O |
-| `supabaseSecretKey`, `oauthCredentialsKey`, `googleClientSecret`, `applePrivateKey`, `kakaoAdminKey`, `fcmServiceAccountJson`, `sentryDsn` | 앱 시크릿에 저장하는 secret | O |
+| `supabaseUrl`, `supabasePublishableKey`, `googleClientId`, `appleClientIds`, `appleTeamId`, `appleKeyId`, `ga4PropertyId` | api와 consumer의 환경 변수 값 | O |
+| `supabaseSecretKey`, `oauthCredentialsKey`, `googleClientSecret`, `applePrivateKey`, `kakaoAdminKey`, `firebaseServiceAccountJson`, `sentryDsn`, `sentryApiToken` | 앱 시크릿에 저장하는 secret | O |
 
 `capacity`는 ECS 서비스의 capacity provider 전략이고 기본값은 `on-demand`입니다.
 
@@ -218,7 +218,8 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | `google_client_secret` | Google OAuth 토큰 요청 |
 | `apple_private_key` | Apple 로그인의 client secret 서명 |
 | `kakao_admin_key` | Kakao 관리 API 호출 |
-| `fcm_service_account_json` | FCM 발송 |
+| `firebase_service_account_json` | FCM 발송, GA4 조회 |
+| `sentry_api_token` | Sentry API 조회 |
 
 ### DB readonly 시크릿
 
@@ -294,6 +295,7 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | `APPLE_CLIENT_IDS` | 스택 config `appleClientIds`, JSON 배열 문자열 |
 | `APPLE_TEAM_ID` | 스택 config `appleTeamId` |
 | `APPLE_KEY_ID` | 스택 config `appleKeyId` |
+| `GA4_PROPERTY_ID` | 스택 config `ga4PropertyId` |
 | `SQS_<큐 이름>_QUEUE_URL` | 큐 URL 7개. 큐 이름은 대문자로 쓰고 `-`를 `_`로 변경. 예: `SQS_PERIODIC_COMMAND_QUEUE_URL` |
 | `SQS_PARROT_SOUND_DETECTION_DLQ_URL` | `parrot-sound-detection-dlq` 큐 URL |
 
@@ -308,7 +310,8 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | `GOOGLE_CLIENT_SECRET` | `<앱 시크릿 ARN>:google_client_secret::` |
 | `APPLE_PRIVATE_KEY` | `<앱 시크릿 ARN>:apple_private_key::` |
 | `KAKAO_ADMIN_KEY` | `<앱 시크릿 ARN>:kakao_admin_key::` |
-| `FCM_SERVICE_ACCOUNT_JSON` | `<앱 시크릿 ARN>:fcm_service_account_json::` |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | `<앱 시크릿 ARN>:firebase_service_account_json::` |
+| `SENTRY_API_TOKEN` | `<앱 시크릿 ARN>:sentry_api_token::` |
 
 ### task role 권한
 
@@ -643,7 +646,7 @@ pulumi up --stack prod
 | behavior | 오리진 | 캐시 정책 |
 |---|---|---|
 | 기본 | S3 | `Managed-CachingOptimized` |
-| `/api/*` | ALB | `Managed-CachingDisabled`, `Managed-AllViewer` |
+| `/api/*` | ALB | `Managed-CachingDisabled`, `Managed-AllViewerAndCloudFrontHeaders-2022-06` |
 
 | 항목 | 값 |
 |---|---|
@@ -775,10 +778,10 @@ pulumi config set --stack <스택> --secret oauthCredentialsKey <Fernet 키>
 pulumi config set --stack <스택> --secret googleClientSecret <클라이언트 secret>
 pulumi config set --stack <스택> --secret kakaoAdminKey <admin 키>
 pulumi config set --stack <스택> --secret applePrivateKey < <p8 파일>
-pulumi config set --stack <스택> --secret fcmServiceAccountJson < <서비스 계정 JSON 파일>
+pulumi config set --stack <스택> --secret firebaseServiceAccountJson < <서비스 계정 JSON 파일>
 ```
 
-여러 줄인 `applePrivateKey`와 `fcmServiceAccountJson`은 값을 stdin으로 넘깁니다.
+여러 줄인 `applePrivateKey`와 `firebaseServiceAccountJson`은 값을 stdin으로 넘깁니다.
 `backofficePassword`와 `readonlyDbPassword`는 현재 `dev`와 `prod` 스택이 같은 값을 사용합니다.
 Supabase 프로젝트, Google OAuth 클라이언트, Apple 앱 ID와 키는 스택마다 다른 값을 사용합니다.
 

@@ -91,8 +91,9 @@ APP_SECRET_ENV_VARS = {
     "google_client_secret": "GOOGLE_CLIENT_SECRET",
     "apple_private_key": "APPLE_PRIVATE_KEY",
     "kakao_admin_key": "KAKAO_ADMIN_KEY",
-    "fcm_service_account_json": "FCM_SERVICE_ACCOUNT_JSON",
+    "firebase_service_account_json": "FIREBASE_SERVICE_ACCOUNT_JSON",
     "sentry_dsn": "SENTRY_DSN",
+    "sentry_api_token": "SENTRY_API_TOKEN",
 }
 
 ROTATION_REDEPLOY_TIMEOUT_SECONDS = 10

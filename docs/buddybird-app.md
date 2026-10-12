@@ -21,6 +21,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `dns.py` | Cloudflare CNAME 레코드 |
 | `schedule.py` | `NightlyStop` 컴포넌트 |
 | `messaging.py` | `Messaging` 컴포넌트 |
+| `petcam.py` | `PetcamTurn` 컴포넌트 |
 
 ## 리소스 구성
 
@@ -44,6 +45,7 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `MbtiCdn` | `mbti-cdn-prod` | `prod` | 이미지 캐시 정책, CloudFront |
 | `Messaging` | `messaging-<스택>` | `dev`, `prod` | SQS 큐와 DLQ, DLQ 알람, 알람 topic, 업로드 이벤트 rule, 1분 주기 스케줄 |
 | `NightlyStop` | `nightly-stop-dev` | `dev` | EventBridge Scheduler 5개, DB 시작 실패 DLQ와 알람, 실행 역할과 정책 |
+| `PetcamTurn` | `petcam-turn-<스택>` | `dev`, `prod` | Cloudflare Realtime TURN 키 |
 | `Landing` | `landing-prod` | `prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 
 ## 환경
@@ -135,6 +137,7 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | mbti web: 로그 그룹 | `/ecs/jn-buddybird-mbti-prod` |
 | audio-ai: Lambda 함수, 실행 역할 | `jn-buddybird-audio-ai-<env>` |
 | audio-ai: 로그 그룹 | `/aws/lambda/jn-buddybird-audio-ai-<env>` |
+| 펫캠: Cloudflare TURN 키 | `jn-buddybird-petcam-<env>` |
 
 ### 공통 이름
 
@@ -629,6 +632,42 @@ pulumi config set buddybird-app:mbtiCdnEnabled false --stack prod
 pulumi preview --stack prod --diff
 pulumi up --stack prod
 ```
+
+## 펫캠
+
+모바일 앱의 펫캠은 기기끼리 영상을 직접 주고받고, 직접 연결되지 않는 통신망에서는 Cloudflare Realtime TURN으로 중계합니다.
+연결 정보 교환과 TURN 접속 정보 발급은 Supabase가 맡으며, 해당 코드는 `buddybird-mobile` 저장소의 `supabase/`에 있습니다.
+
+### TURN 키
+
+| 항목 | 값 |
+|---|---|
+| 리소스 | Cloudflare Realtime TURN 키 |
+| 계정 | `buddybird.xyz` zone이 속한 Cloudflare 계정 |
+| 요금 | Realtime 무료 구간은 계정 전체 합산 월 1,000GB |
+
+스택마다 키를 따로 만들어 dev와 prod의 사용량을 구분합니다.
+
+### 출력값
+
+| 출력값 | 내용 |
+|---|---|
+| `petcam_turn_key_id` | TURN 키 ID |
+| `petcam_turn_api_token` | TURN 접속 정보 발급에 쓰는 API 토큰, secret |
+
+### Supabase 시크릿 등록
+
+TURN 키를 만들거나 교체한 뒤에는 같은 환경의 Supabase 프로젝트에 출력값을 등록합니다.
+다음 명령은 `buddybird-app/`에서 실행합니다.
+
+```bash
+export AWS_PROFILE=joynnovate
+npx supabase secrets set --project-ref <Supabase 프로젝트 ref> \
+  CLOUDFLARE_TURN_KEY_ID="$(pulumi stack output petcam_turn_key_id --stack <스택>)" \
+  CLOUDFLARE_TURN_API_TOKEN="$(pulumi stack output petcam_turn_api_token --stack <스택> --show-secrets)"
+```
+
+Cloudflare API 토큰(`cloudflare:apiToken`)에는 계정의 Realtime 편집 권한이 필요합니다.
 
 ## 랜딩
 

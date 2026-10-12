@@ -94,6 +94,7 @@ APP_SECRET_ENV_VARS = {
     "firebase_service_account_json": "FIREBASE_SERVICE_ACCOUNT_JSON",
     "sentry_dsn": "SENTRY_DSN",
     "sentry_api_token": "SENTRY_API_TOKEN",
+    "cloudflare_turn_api_token": "CLOUDFLARE_TURN_API_TOKEN",
 }
 
 ROTATION_REDEPLOY_TIMEOUT_SECONDS = 10

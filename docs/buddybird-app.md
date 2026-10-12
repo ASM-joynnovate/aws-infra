@@ -21,7 +21,6 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `dns.py` | Cloudflare CNAME 레코드 |
 | `schedule.py` | `NightlyStop` 컴포넌트 |
 | `messaging.py` | `Messaging` 컴포넌트 |
-| `petcam.py` | `PetcamTurn` 컴포넌트 |
 
 ## 리소스 구성
 
@@ -45,7 +44,6 @@ ECR 저장소, 이미지 배포 역할, RDS 서브넷 그룹은 `buddybird-share
 | `MbtiCdn` | `mbti-cdn-prod` | `prod` | 이미지 캐시 정책, CloudFront |
 | `Messaging` | `messaging-<스택>` | `dev`, `prod` | SQS 큐와 DLQ, DLQ 알람, 알람 topic, 업로드 이벤트 rule, 1분 주기 스케줄 |
 | `NightlyStop` | `nightly-stop-dev` | `dev` | EventBridge Scheduler 5개, DB 시작 실패 DLQ와 알람, 실행 역할과 정책 |
-| `PetcamTurn` | `petcam-turn-<스택>` | `dev`, `prod` | Cloudflare Realtime TURN 키 |
 | `Landing` | `landing-prod` | `prod` | 랜딩 버킷과 하드닝, OAC, rewrite 함수, CloudFront, 버킷 정책, 배포 역할과 정책, DNS `root`와 `www` |
 
 ## 환경
@@ -96,8 +94,8 @@ DLQ에 메시지가 들어오면 `jn-buddybird-dev-alarms` topic으로 팀 이�
 | `mbtiCdnEnabled` | `true`이면 mbti DNS를 MBTI CloudFront로 연결 | X |
 | `nightlyStop` | `true`인 스택의 api 서비스와 RDS를 매일 03시에 정지하고 08시에 시작 | X |
 | `consumerSeparate` | `true`이면 consumer를 별도 ECS 서비스로 생성. 없으면 api task의 두 번째 컨테이너로 실행 | X |
-| `supabaseUrl`, `supabasePublishableKey`, `googleClientId`, `appleClientIds`, `appleTeamId`, `appleKeyId`, `ga4PropertyId` | api와 consumer의 환경 변수 값 | O |
-| `supabaseSecretKey`, `oauthCredentialsKey`, `googleClientSecret`, `applePrivateKey`, `kakaoAdminKey`, `firebaseServiceAccountJson`, `sentryDsn`, `sentryApiToken` | 앱 시크릿에 저장하는 secret | O |
+| `supabaseUrl`, `supabasePublishableKey`, `googleClientId`, `appleClientIds`, `appleTeamId`, `appleKeyId`, `ga4PropertyId`, `cloudflareTurnKeyId` | api와 consumer의 환경 변수 값 | O |
+| `supabaseSecretKey`, `oauthCredentialsKey`, `googleClientSecret`, `applePrivateKey`, `kakaoAdminKey`, `firebaseServiceAccountJson`, `sentryDsn`, `sentryApiToken`, `cloudflareTurnApiToken` | 앱 시크릿에 저장하는 secret | O |
 
 `capacity`는 ECS 서비스의 capacity provider 전략이고 기본값은 `on-demand`입니다.
 
@@ -137,7 +135,6 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | mbti web: 로그 그룹 | `/ecs/jn-buddybird-mbti-prod` |
 | audio-ai: Lambda 함수, 실행 역할 | `jn-buddybird-audio-ai-<env>` |
 | audio-ai: 로그 그룹 | `/aws/lambda/jn-buddybird-audio-ai-<env>` |
-| 펫캠: Cloudflare TURN 키 | `jn-buddybird-petcam-<env>` |
 
 ### 공통 이름
 
@@ -223,6 +220,7 @@ api의 DNS 레코드는 랜딩이 없는 스택에서만 만듭니다.
 | `kakao_admin_key` | Kakao 관리 API 호출 |
 | `firebase_service_account_json` | FCM 발송, GA4 조회 |
 | `sentry_api_token` | Sentry API 조회 |
+| `cloudflare_turn_api_token` | 펫캠 TURN 접속 정보 발급 |
 
 ### DB readonly 시크릿
 
@@ -299,6 +297,7 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | `APPLE_TEAM_ID` | 스택 config `appleTeamId` |
 | `APPLE_KEY_ID` | 스택 config `appleKeyId` |
 | `GA4_PROPERTY_ID` | 스택 config `ga4PropertyId` |
+| `CLOUDFLARE_TURN_KEY_ID` | 스택 config `cloudflareTurnKeyId` |
 | `SQS_<큐 이름>_QUEUE_URL` | 큐 URL 7개. 큐 이름은 대문자로 쓰고 `-`를 `_`로 변경. 예: `SQS_PERIODIC_COMMAND_QUEUE_URL` |
 | `SQS_PARROT_SOUND_DETECTION_DLQ_URL` | `parrot-sound-detection-dlq` 큐 URL |
 
@@ -315,6 +314,7 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | `KAKAO_ADMIN_KEY` | `<앱 시크릿 ARN>:kakao_admin_key::` |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | `<앱 시크릿 ARN>:firebase_service_account_json::` |
 | `SENTRY_API_TOKEN` | `<앱 시크릿 ARN>:sentry_api_token::` |
+| `CLOUDFLARE_TURN_API_TOKEN` | `<앱 시크릿 ARN>:cloudflare_turn_api_token::` |
 
 ### task role 권한
 
@@ -636,38 +636,57 @@ pulumi up --stack prod
 ## 펫캠
 
 모바일 앱의 펫캠은 기기끼리 영상을 직접 주고받고, 직접 연결되지 않는 통신망에서는 Cloudflare Realtime TURN으로 중계합니다.
-연결 정보 교환과 TURN 접속 정보 발급은 Supabase가 맡으며, 해당 코드는 `buddybird-mobile` 저장소의 `supabase/`에 있습니다.
+연결 정보는 Supabase Realtime 채널로 교환하고, TURN 접속 정보는 api가 발급합니다.
 
 ### TURN 키
 
 | 항목 | 값 |
 |---|---|
-| 리소스 | Cloudflare Realtime TURN 키 |
+| 리소스 | Cloudflare Realtime TURN 키 `buddybird-petcam` |
+| 생성 | Cloudflare 대시보드에서 직접 생성 |
 | 계정 | `buddybird.xyz` zone이 속한 Cloudflare 계정 |
 | 요금 | Realtime 무료 구간은 계정 전체 합산 월 1,000GB |
 
-스택마다 키를 따로 만들어 dev와 prod의 사용량을 구분합니다.
+`pulumi-cloudflare` 6.x의 `CallsTurnApp`은 접속 정보 발급에 쓰는 API 토큰을 돌려주지 않아 키를 Pulumi로 만들지 않습니다.
+API 토큰은 키를 만드는 순간에만 확인할 수 있습니다.
+`dev`와 `prod` 스택은 같은 키를 사용합니다.
 
-### 출력값
+| 스택 config | 내용 | api 전달 방식 |
+|---|---|---|
+| `cloudflareTurnKeyId` | TURN 키 ID | 환경 변수 `CLOUDFLARE_TURN_KEY_ID` |
+| `cloudflareTurnApiToken` | TURN 접속 정보 발급에 쓰는 API 토큰, secret | 앱 시크릿의 `cloudflare_turn_api_token` |
 
-| 출력값 | 내용 |
-|---|---|
-| `petcam_turn_key_id` | TURN 키 ID |
-| `petcam_turn_api_token` | TURN 접속 정보 발급에 쓰는 API 토큰, secret |
+api는 로그인한 사용자의 요청을 받으면 이 값으로 Cloudflare에서 24시간 동안 유효한 접속 정보를 발급받아 돌려줍니다.
 
-### Supabase 시크릿 등록
+### 채널 권한
 
-TURN 키를 만들거나 교체한 뒤에는 같은 환경의 Supabase 프로젝트에 출력값을 등록합니다.
-다음 명령은 `buddybird-app/`에서 실행합니다.
+연결 정보는 `petcam:<사용자 id>:<세션 id>` 이름의 Supabase Realtime private 채널로 주고받습니다.
+로그인한 사용자는 본인 id로 시작하는 채널에서만 메시지를 받고 보낼 수 있습니다.
+정책은 Supabase 대시보드에서 관리하며, `dev`와 `prod` 프로젝트에 다음 SQL을 적용했습니다.
 
-```bash
-export AWS_PROFILE=joynnovate
-npx supabase secrets set --project-ref <Supabase 프로젝트 ref> \
-  CLOUDFLARE_TURN_KEY_ID="$(pulumi stack output petcam_turn_key_id --stack <스택>)" \
-  CLOUDFLARE_TURN_API_TOKEN="$(pulumi stack output petcam_turn_api_token --stack <스택> --show-secrets)"
+```sql
+drop policy if exists "petcam members can receive broadcasts" on realtime.messages;
+create policy "petcam members can receive broadcasts"
+on realtime.messages
+for select
+to authenticated
+using (
+	realtime.messages.extension = 'broadcast'
+	and split_part(realtime.topic(), ':', 1) = 'petcam'
+	and split_part(realtime.topic(), ':', 2) = (select auth.uid())::text
+);
+
+drop policy if exists "petcam members can send broadcasts" on realtime.messages;
+create policy "petcam members can send broadcasts"
+on realtime.messages
+for insert
+to authenticated
+with check (
+	realtime.messages.extension = 'broadcast'
+	and split_part(realtime.topic(), ':', 1) = 'petcam'
+	and split_part(realtime.topic(), ':', 2) = (select auth.uid())::text
+);
 ```
-
-Cloudflare API 토큰(`cloudflare:apiToken`)에는 계정의 Realtime 편집 권한이 필요합니다.
 
 ## 랜딩
 
@@ -812,10 +831,12 @@ pulumi config set --stack <스택> googleClientId <Google OAuth 클라이언트 
 pulumi config set --stack <스택> appleClientIds '["<Apple 앱 ID>"]'
 pulumi config set --stack <스택> appleTeamId <Apple 팀 ID>
 pulumi config set --stack <스택> appleKeyId <Apple 로그인 키 ID>
+pulumi config set --stack <스택> cloudflareTurnKeyId <Cloudflare TURN 키 ID>
 pulumi config set --stack <스택> --secret supabaseSecretKey <secret key>
 pulumi config set --stack <스택> --secret oauthCredentialsKey <Fernet 키>
 pulumi config set --stack <스택> --secret googleClientSecret <클라이언트 secret>
 pulumi config set --stack <스택> --secret kakaoAdminKey <admin 키>
+pulumi config set --stack <스택> --secret cloudflareTurnApiToken <Cloudflare TURN API 토큰>
 pulumi config set --stack <스택> --secret applePrivateKey < <p8 파일>
 pulumi config set --stack <스택> --secret firebaseServiceAccountJson < <서비스 계정 JSON 파일>
 ```

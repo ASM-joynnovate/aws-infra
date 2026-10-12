@@ -6,7 +6,6 @@ import pulumi_aws as aws
 from data import LOCAL_CORS_ORIGINS, ROOT_DOMAIN, data_bucket_name
 from edge import Landing, LandingArgs, MbtiCdn, MbtiCdnArgs
 from messaging import Messaging, MessagingArgs
-from petcam import PetcamTurn, PetcamTurnArgs
 from schedule import NightlyStop, NightlyStopArgs
 from service import (
     DEFAULT_CAPACITY,
@@ -23,7 +22,6 @@ API_PREFIX = f"{PREFIX}-api"
 BACKOFFICE_FRONTEND_PREFIX = f"{PREFIX}-backoffice-frontend"
 LANDING_PREFIX = f"{PREFIX}-site"
 MBTI_WEB_PREFIX = f"{PREFIX}-mbti"
-PETCAM_PREFIX = f"{PREFIX}-petcam"
 
 ALARM_EMAILS = ["joynnovate@gmail.com"]
 
@@ -36,6 +34,7 @@ APP_ENVIRONMENT_CONFIG_KEYS = {
     "appleKeyId": "APPLE_KEY_ID",
     "marketingContact": "MARKETING_CONTACT",
     "ga4PropertyId": "GA4_PROPERTY_ID",
+    "cloudflareTurnKeyId": "CLOUDFLARE_TURN_KEY_ID",
 }
 APP_SECRET_CONFIG_KEYS = {
     "backofficePassword": "backoffice_password",
@@ -47,6 +46,7 @@ APP_SECRET_CONFIG_KEYS = {
     "firebaseServiceAccountJson": "firebase_service_account_json",
     "sentryDsn": "sentry_dsn",
     "sentryApiToken": "sentry_api_token",
+    "cloudflareTurnApiToken": "cloudflare_turn_api_token",
 }
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"
@@ -210,14 +210,7 @@ if nightly_stop_enabled:
         ),
     )
 
-petcam_turn = PetcamTurn(
-    f"petcam-turn-{env}",
-    PetcamTurnArgs(key_name=f"{PETCAM_PREFIX}-{env}"),
-)
-
 pulumi.export("data_bucket_name", api.data.bucket.id)
-pulumi.export("petcam_turn_key_id", petcam_turn.key.uid)
-pulumi.export("petcam_turn_api_token", pulumi.Output.secret(petcam_turn.key.key))
 pulumi.export(
     "queue_urls", {suffix: queue.url for suffix, queue in messaging.queues.items()}
 )

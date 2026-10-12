@@ -56,3 +56,6 @@ config:
   buddybird-app:sentryApiToken:
     secure: v1:BcQCzUT/eGkZNDnd:Y5f5GBdDAC7zmyhvWeti39k71KnBMd5uWG7qliXW0CnTzacmUvBvLWQQjjl69DNXC4IgYuFXRXruVj/pjvsX2B7hQiKtfen95CSjBZbh7Z4=
   buddybird-app:ga4PropertyId: "538111158"
+  buddybird-app:cloudflareTurnKeyId: 3a3437dcb285027ad2ea0dcc3e7b28ac
+  buddybird-app:cloudflareTurnApiToken:
+    secure: v1:QXhc3Y3kyNk1MWPi:enF1N3X3ycRZfhbUK8WNsdTwmB1LhiLRvKSvwZrgpdmbMoNHGYYk1QUhm5o6CsPtgoKlaDuN51diPU0toxxDobZotloHaVsXTjpnA0yhjWo=

@@ -34,6 +34,7 @@ APP_ENVIRONMENT_CONFIG_KEYS = {
     "appleKeyId": "APPLE_KEY_ID",
     "marketingContact": "MARKETING_CONTACT",
     "ga4PropertyId": "GA4_PROPERTY_ID",
+    "cloudflareTurnKeyId": "CLOUDFLARE_TURN_KEY_ID",
 }
 APP_SECRET_CONFIG_KEYS = {
     "backofficePassword": "backoffice_password",
@@ -45,6 +46,7 @@ APP_SECRET_CONFIG_KEYS = {
     "firebaseServiceAccountJson": "firebase_service_account_json",
     "sentryDsn": "sentry_dsn",
     "sentryApiToken": "sentry_api_token",
+    "cloudflareTurnApiToken": "cloudflare_turn_api_token",
 }
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"

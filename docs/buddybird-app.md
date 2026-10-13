@@ -642,14 +642,14 @@ pulumi up --stack prod
 
 | 항목 | 값 |
 |---|---|
-| 리소스 | Cloudflare Realtime TURN 키 `buddybird-petcam` |
+| 리소스 | Cloudflare Realtime TURN 키, `dev` 스택은 `buddybird-petcam-dev`, `prod` 스택은 `buddybird-petcam` |
 | 생성 | Cloudflare 대시보드에서 직접 생성 |
 | 계정 | `buddybird.xyz` zone이 속한 Cloudflare 계정 |
 | 요금 | Realtime 무료 구간은 계정 전체 합산 월 1,000GB |
 
 `pulumi-cloudflare` 6.x의 `CallsTurnApp`은 접속 정보 발급에 쓰는 API 토큰을 돌려주지 않아 키를 Pulumi로 만들지 않습니다.
 API 토큰은 키를 만드는 순간에만 확인할 수 있습니다.
-`dev`와 `prod` 스택은 같은 키를 사용합니다.
+`dev`와 `prod` 스택은 서로 다른 키를 사용하므로, 사용량을 스택별로 확인하고 키를 따로 교체할 수 있습니다.
 
 | 스택 config | 내용 | api 전달 방식 |
 |---|---|---|

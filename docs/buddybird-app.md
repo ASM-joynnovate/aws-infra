@@ -372,7 +372,7 @@ consumer는 `parrot-sound-detection-dlq`도 읽어 앵무새 소리 판정에 �
 | DLQ 보존 기간 | 14일 |
 | DLQ 알람 | 메시지 수가 0보다 크면 `jn-buddybird-<env>-alarms` topic으로 팀 이메일 발송 |
 | 업로드 이벤트 rule | `jn-buddybird-<env>-upload-created` |
-| 업로드 이벤트 key 조건 | `upload/` prefix, `user/*/word/*`, `user/*/session/*` |
+| 업로드 이벤트 key 조건 | `upload/` prefix, `user/*/word/*`, `user/*/session/*`, `user/*/petcam/*` |
 | 1분 주기 스케줄 | `jn-buddybird-<env>-withdrawal-dispatch`, `jn-buddybird-<env>-heartbeat-check` |
 | 스케줄 실행 역할 | `jn-buddybird-<env>-scheduler` |
 

@@ -40,6 +40,7 @@ UPLOAD_KEY_PATTERNS = [
     {"prefix": "upload/"},
     {"wildcard": "user/*/word/*"},
     {"wildcard": "user/*/session/*"},
+    {"wildcard": "user/*/petcam/*"},
 ]
 
 TICK_SCHEDULE = "rate(1 minute)"

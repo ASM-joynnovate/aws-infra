@@ -300,6 +300,7 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | `CLOUDFLARE_TURN_KEY_ID` | 스택 config `cloudflareTurnKeyId` |
 | `SQS_<큐 이름>_QUEUE_URL` | 큐 URL 7개. 큐 이름은 대문자로 쓰고 `-`를 `_`로 변경. 예: `SQS_PERIODIC_COMMAND_QUEUE_URL` |
 | `SQS_PARROT_SOUND_DETECTION_DLQ_URL` | `parrot-sound-detection-dlq` 큐 URL |
+| `SQS_MIMICRY_JUDGMENT_DLQ_URL` | `mimicry-judgment-dlq` 큐 URL |
 
 ### 시크릿
 
@@ -323,7 +324,7 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 | api | 데이터 버킷 객체 | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:PutObjectTagging` |
 | api | `notification`, `withdrawal` 큐 | `sqs:SendMessage` |
 | api | KVS 채널 `jn-buddybird-<env>-*` | 시그널링 채널 생성, 조회, 삭제와 `ConnectAsMaster`, `ConnectAsViewer`, `GetIceServerConfig` |
-| consumer | `upload-confirmation`, `judgment-result`, `notification`, `withdrawal`, `periodic-command`, `parrot-sound-detection-dlq` 큐 | 수신, 삭제, visibility 변경, 속성 조회 |
+| consumer | `upload-confirmation`, `judgment-result`, `notification`, `withdrawal`, `periodic-command`, `parrot-sound-detection-dlq`, `mimicry-judgment-dlq` 큐 | 수신, 삭제, visibility 변경, 속성 조회 |
 | consumer | `parrot-sound-detection`, `mimicry-judgment`, `notification`, `withdrawal` 큐 | `sqs:SendMessage` |
 | consumer | 데이터 버킷 객체 | api와 같음 |
 
@@ -354,15 +355,14 @@ ECS는 종료된 consumer 컨테이너를 다시 시작하지 않으므로 dev a
 |---|---|---|---|---|
 | `upload-confirmation` | consumer | S3 Object Created 이벤트 | 데이터 버킷의 EventBridge rule | 60초 |
 | `parrot-sound-detection` | audio-ai | 명령 `audio.detect_parrot` | consumer | 360초 |
-| `mimicry-judgment` | 2단계 판정 worker | 명령 `sound.judge_mimicry` | consumer | 300초 |
-| `judgment-result` | consumer | 이벤트 `audio.parrot_detected`, `sound.mimicry_judged` | audio-ai, 2단계 판정 worker | 30초 |
+| `mimicry-judgment` | audio-ai | 명령 `audio.judge_mimic` | consumer | 360초 |
+| `judgment-result` | consumer | 이벤트 `audio.parrot_detected`, `audio.mimic_judged` | audio-ai | 30초 |
 | `notification` | consumer | 명령 `notification.send` | api, consumer | 30초 |
 | `withdrawal` | consumer | 명령 `withdrawal.process` | api, consumer | 300초 |
 | `periodic-command` | consumer | 명령 `withdrawal.dispatch`, `session.check_heartbeats` | 1분 주기 스케줄 | 30초 |
 
-`parrot-sound-detection`의 360초는 audio-ai 함수 제한 시간 60초의 6배이고, AWS가 SQS 트리거에 권장하는 최소값입니다.
-`mimicry-judgment`의 300초는 초기값이며 모델의 처리 시간이 나오면 조정합니다.
-consumer는 `parrot-sound-detection-dlq`도 읽어 앵무새 소리 판정에 실패한 소리를 failed로 표시합니다.
+`parrot-sound-detection`과 `mimicry-judgment`의 360초는 audio-ai 함수 제한 시간 60초의 6배이고, AWS가 SQS 트리거에 권장하는 최소값입니다.
+consumer는 `parrot-sound-detection-dlq`와 `mimicry-judgment-dlq`도 읽어 앵무새 소리 판정이나 단어 모사 판정에 실패한 소리를 failed로 표시합니다.
 메시지 type은 `<대상>.<동사>` 형태이고 명령은 명령형으로, 이벤트는 과거형으로 짓습니다.
 
 | 항목 | 값 |
@@ -383,7 +383,7 @@ consumer는 `parrot-sound-detection-dlq`도 읽어 앵무새 소리 판정에 �
 ## audio-ai
 
 `buddybird-ai-api` 레포지토리의 Lambda 함수입니다.
-`parrot-sound-detection` 큐의 요청을 받아 앵무새 소리 판정을 실행하고, 결과를 `judgment-result` 큐로 보냅니다.
+`parrot-sound-detection` 큐의 요청을 받아 앵무새 소리 판정을, `mimicry-judgment` 큐의 요청을 받아 단어 모사 판정을 실행하고, 결과를 `judgment-result` 큐로 보냅니다.
 Lambda 함수와 SQS 트리거는 스택 config `audioAi`가 있는 스택에만 만듭니다.
 
 ### ECR 저장소
@@ -449,21 +449,20 @@ Pulumi는 함수의 `imageUri`를 `ignoreChanges`로 제외하고, 이후 이미
 | 대상 | 액션 |
 |---|---|
 | CloudWatch Logs | `AWSLambdaBasicExecutionRole` |
-| 데이터 버킷 `user/*/session/*` 객체 | `s3:GetObject` |
-| `parrot-sound-detection` 큐 | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
+| 데이터 버킷 `user/*/session/*`, `user/*/word/*`, `preset/*` 객체 | `s3:GetObject` |
+| `parrot-sound-detection`, `mimicry-judgment` 큐 | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
 | `judgment-result` 큐 | `sqs:SendMessage` |
 
 ### SQS 트리거
 
-| 항목 | 값 |
-|---|---|
-| 큐 | `parrot-sound-detection` |
-| 배치 크기 | 10 |
-| 응답 유형 | `ReportBatchItemFailures` |
-| 최대 동시 실행 | 스택 config `audioAi.maximumConcurrency` |
+| 큐 | 배치 크기 | DLQ |
+|---|---|---|
+| `parrot-sound-detection` | 10 | `parrot-sound-detection-dlq` |
+| `mimicry-judgment` | 1 | `mimicry-judgment-dlq` |
 
+두 트리거 모두 응답 유형은 `ReportBatchItemFailures`이고, 최대 동시 실행은 스택 config `audioAi.maximumConcurrency`입니다.
 함수가 `batchItemFailures`로 돌려준 메시지는 삭제되지 않고, visibility timeout 360초가 지나면 다시 처리됩니다.
-5번 실패한 메시지는 `parrot-sound-detection-dlq`로 옮겨집니다.
+5번 실패한 메시지는 각 큐의 DLQ로 옮겨집니다.
 
 ## backoffice frontend
 

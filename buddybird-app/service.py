@@ -461,8 +461,12 @@ class AudioAiArgs:
     env: str
     function_name: str
     image: pulumi.Input[str]
+    timeout: int
     data_bucket: aws.s3.Bucket
+    object_keys: Sequence[str]
     queues: Mapping[str, aws.sqs.Queue]
+    request_queue: str
+    batch_size: int
     maximum_concurrency: int
     sentry_dsn: pulumi.Input[str]
 
@@ -479,8 +483,7 @@ class AudioAi(pulumi.ComponentResource):
         replaceable = pulumi.ResourceOptions.merge(
             child, pulumi.ResourceOptions(delete_before_replace=True)
         )
-        request_queue = args.queues[PARROT_SOUND_DETECTION]
-        mimicry_queue = args.queues[MIMICRY_JUDGMENT]
+        request_queue = args.queues[args.request_queue]
         result_queue = args.queues[JUDGMENT_RESULT]
 
         logs = log_group(
@@ -492,7 +495,7 @@ class AudioAi(pulumi.ComponentResource):
         role = aws.iam.Role(
             f"{name}-role",
             name=args.function_name,
-            description=f"buddybird-audio-ai {args.env} sound analysis",
+            description=f"buddybird-ai-api {args.function_name}",
             assume_role_policy=_assume_role_policy("lambda.amazonaws.com"),
             opts=replaceable,
         )
@@ -513,13 +516,8 @@ class AudioAi(pulumi.ComponentResource):
                         effect=PolicyStatementEffect.ALLOW,
                         actions=["s3:GetObject"],
                         resources=[
-                            pulumi.Output.format(
-                                "{0}/user/*/session/*", args.data_bucket.arn
-                            ),
-                            pulumi.Output.format(
-                                "{0}/user/*/word/*", args.data_bucket.arn
-                            ),
-                            pulumi.Output.format("{0}/preset/*", args.data_bucket.arn),
+                            pulumi.Output.concat(args.data_bucket.arn, "/", key)
+                            for key in args.object_keys
                         ],
                     ),
                     GetPolicyDocumentStatementArgs(
@@ -529,7 +527,7 @@ class AudioAi(pulumi.ComponentResource):
                             "sqs:DeleteMessage",
                             "sqs:GetQueueAttributes",
                         ],
-                        resources=[request_queue.arn, mimicry_queue.arn],
+                        resources=[request_queue.arn],
                     ),
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
@@ -549,11 +547,11 @@ class AudioAi(pulumi.ComponentResource):
             image_uri=args.image,
             architectures=["arm64"],
             memory_size=4096,
-            timeout=60,
+            timeout=args.timeout,
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
-                    "APP_ENV": args.env,
-                    "AUDIO_S3_BUCKET": args.data_bucket.id,
+                    "ENV": args.env,
+                    "S3_BUCKET": args.data_bucket.id,
                     "SQS_JUDGMENT_RESULT_QUEUE_URL": result_queue.url,
                     "SENTRY_DSN": args.sentry_dsn,
                 }
@@ -568,21 +566,7 @@ class AudioAi(pulumi.ComponentResource):
             f"{name}-event-source-mapping",
             event_source_arn=request_queue.arn,
             function_name=function.arn,
-            batch_size=10,
-            function_response_types=["ReportBatchItemFailures"],
-            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
-                maximum_concurrency=args.maximum_concurrency
-            ),
-            opts=pulumi.ResourceOptions.merge(
-                child, pulumi.ResourceOptions(depends_on=[policy])
-            ),
-        )
-
-        aws.lambda_.EventSourceMapping(
-            f"{name}-{MIMICRY_JUDGMENT}-event-source-mapping",
-            event_source_arn=mimicry_queue.arn,
-            function_name=function.arn,
-            batch_size=1,
+            batch_size=args.batch_size,
             function_response_types=["ReportBatchItemFailures"],
             scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
                 maximum_concurrency=args.maximum_concurrency

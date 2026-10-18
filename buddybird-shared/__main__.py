@@ -9,6 +9,7 @@ from deploy import (
     MBTI_WEB_DEPLOY_SUBS,
     ImageDelivery,
     ImageDeliveryArgs,
+    repository,
 )
 
 API_PREFIX = "jn-buddybird-api"
@@ -30,7 +31,7 @@ private_subnet_ids = infra.require_output("private_subnet_ids")
 api_delivery = ImageDelivery(
     "api",
     ImageDeliveryArgs(
-        repository_name=API_PREFIX,
+        repository_names={"api": API_PREFIX},
         role_name=f"{API_PREFIX}-deploy",
         subs=API_DEPLOY_SUBS,
         account_id=account_id,
@@ -44,7 +45,7 @@ api_delivery = ImageDelivery(
 backoffice_frontend_delivery = ImageDelivery(
     "backoffice-frontend",
     ImageDeliveryArgs(
-        repository_name=BACKOFFICE_FRONTEND_PREFIX,
+        repository_names={"backoffice-frontend": BACKOFFICE_FRONTEND_PREFIX},
         role_name=f"{BACKOFFICE_FRONTEND_PREFIX}-deploy",
         subs=BACKOFFICE_FRONTEND_DEPLOY_SUBS,
         account_id=account_id,
@@ -57,7 +58,7 @@ backoffice_frontend_delivery = ImageDelivery(
 mbti_web_delivery = ImageDelivery(
     "mbti-web",
     ImageDeliveryArgs(
-        repository_name=MBTI_WEB_PREFIX,
+        repository_names={"mbti-web": MBTI_WEB_PREFIX},
         role_name=f"{MBTI_WEB_PREFIX}-deploy",
         subs=MBTI_WEB_DEPLOY_SUBS,
         account_id=account_id,
@@ -70,7 +71,10 @@ mbti_web_delivery = ImageDelivery(
 audio_ai_delivery = ImageDelivery(
     "audio-ai",
     ImageDeliveryArgs(
-        repository_name=AUDIO_AI_PREFIX,
+        repository_names={
+            "parrot-detection": "jn-buddybird-parrot-detection",
+            "mimic-judgment": "jn-buddybird-mimic-judgment",
+        },
         role_name=f"{AUDIO_AI_PREFIX}-deploy",
         subs=AUDIO_AI_DEPLOY_SUBS,
         account_id=account_id,
@@ -81,18 +85,34 @@ audio_ai_delivery = ImageDelivery(
     ),
 )
 
+repository(
+    "audio-ai",
+    repository_name=AUDIO_AI_PREFIX,
+    opts=pulumi.ResourceOptions(parent=audio_ai_delivery),
+)
+
 db_network = DbNetwork(
     "db-network",
     DbNetworkArgs(subnet_group_name=API_PREFIX, subnet_ids=private_subnet_ids),
 )
 
-pulumi.export("api_repository_url", api_delivery.repository.repository_url)
+pulumi.export("api_repository_url", api_delivery.repositories["api"].repository_url)
 pulumi.export(
     "backoffice_frontend_repository_url",
-    backoffice_frontend_delivery.repository.repository_url,
+    backoffice_frontend_delivery.repositories["backoffice-frontend"].repository_url,
 )
-pulumi.export("mbti_web_repository_url", mbti_web_delivery.repository.repository_url)
-pulumi.export("audio_ai_repository_url", audio_ai_delivery.repository.repository_url)
+pulumi.export(
+    "mbti_web_repository_url",
+    mbti_web_delivery.repositories["mbti-web"].repository_url,
+)
+pulumi.export(
+    "parrot_detection_repository_url",
+    audio_ai_delivery.repositories["parrot-detection"].repository_url,
+)
+pulumi.export(
+    "mimic_judgment_repository_url",
+    audio_ai_delivery.repositories["mimic-judgment"].repository_url,
+)
 pulumi.export("api_deploy_role_arn", api_delivery.deploy_role.arn)
 pulumi.export(
     "backoffice_frontend_deploy_role_arn",

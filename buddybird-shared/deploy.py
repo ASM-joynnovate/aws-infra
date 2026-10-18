@@ -1,5 +1,5 @@
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import pulumi
@@ -55,7 +55,7 @@ ECR_IMAGE_LIMIT = 20
 
 @dataclass(frozen=True)
 class ImageDeliveryArgs:
-    repository_name: str
+    repository_names: Mapping[str, str]
     role_name: str
     subs: Sequence[str]
     account_id: str
@@ -67,7 +67,7 @@ class ImageDeliveryArgs:
 
 
 def _deploy_policy(
-    args: ImageDeliveryArgs, repository_arn: pulumi.Input[str]
+    args: ImageDeliveryArgs, repository_arns: Sequence[pulumi.Input[str]]
 ) -> pulumi.Output[str]:
     account_id = args.account_id
     region = args.region
@@ -85,7 +85,7 @@ def _deploy_policy(
             sid="EcrPush",
             effect=PolicyStatementEffect.ALLOW,
             actions=ECR_PUSH_ACTIONS,
-            resources=[repository_arn],
+            resources=list(repository_arns),
         ),
     ]
 
@@ -98,7 +98,10 @@ def _deploy_policy(
                     "lambda:UpdateFunctionCode",
                     "lambda:GetFunction",
                 ],
-                resources=[f"arn:aws:lambda:{region}:{account_id}:function:{prefix}-*"],
+                resources=[
+                    f"arn:aws:lambda:{region}:{account_id}:function:{repository_name}-*"
+                    for repository_name in args.repository_names.values()
+                ],
             )
         )
 
@@ -187,6 +190,55 @@ def _deploy_policy(
     return aws.iam.get_policy_document_output(statements=statements).json
 
 
+def repository(
+    name: str, *, repository_name: str, opts: pulumi.ResourceOptions
+) -> aws.ecr.Repository:
+    repository = aws.ecr.Repository(
+        f"{name}-repository",
+        name=repository_name,
+        image_tag_mutability="IMMUTABLE",
+        image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
+            scan_on_push=True
+        ),
+        opts=opts,
+    )
+
+    aws.ecr.LifecyclePolicy(
+        f"{name}-lifecycle",
+        repository=repository.name,
+        policy=json.dumps(
+            {
+                "rules": [
+                    {
+                        "rulePriority": 1,
+                        "description": "Expire untagged images",
+                        "selection": {
+                            "tagStatus": aws.ecr.LifecyclePolicyTagStatus.UNTAGGED,
+                            "countType": aws.ecr.LifecyclePolicyCountType.SINCE_IMAGE_PUSHED,
+                            "countUnit": "days",
+                            "countNumber": ECR_UNTAGGED_EXPIRE_DAYS,
+                        },
+                        "action": {"type": aws.ecr.LifecyclePolicyActionType.EXPIRE},
+                    },
+                    {
+                        "rulePriority": 2,
+                        "description": "Keep recent images only",
+                        "selection": {
+                            "tagStatus": aws.ecr.LifecyclePolicyTagStatus.ANY,
+                            "countType": aws.ecr.LifecyclePolicyCountType.IMAGE_COUNT_MORE_THAN,
+                            "countNumber": ECR_IMAGE_LIMIT,
+                        },
+                        "action": {"type": aws.ecr.LifecyclePolicyActionType.EXPIRE},
+                    },
+                ]
+            }
+        ),
+        opts=opts,
+    )
+
+    return repository
+
+
 class ImageDelivery(pulumi.ComponentResource):
     def __init__(
         self,
@@ -197,52 +249,10 @@ class ImageDelivery(pulumi.ComponentResource):
         super().__init__("joynnovate:buddybird:ImageDelivery", name, None, opts)
         child = pulumi.ResourceOptions(parent=self)
 
-        self.repository = aws.ecr.Repository(
-            f"{name}-repository",
-            name=args.repository_name,
-            image_tag_mutability="IMMUTABLE",
-            image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
-                scan_on_push=True
-            ),
-            opts=child,
-        )
-
-        aws.ecr.LifecyclePolicy(
-            f"{name}-lifecycle",
-            repository=self.repository.name,
-            policy=json.dumps(
-                {
-                    "rules": [
-                        {
-                            "rulePriority": 1,
-                            "description": "Expire untagged images",
-                            "selection": {
-                                "tagStatus": aws.ecr.LifecyclePolicyTagStatus.UNTAGGED,
-                                "countType": aws.ecr.LifecyclePolicyCountType.SINCE_IMAGE_PUSHED,
-                                "countUnit": "days",
-                                "countNumber": ECR_UNTAGGED_EXPIRE_DAYS,
-                            },
-                            "action": {
-                                "type": aws.ecr.LifecyclePolicyActionType.EXPIRE
-                            },
-                        },
-                        {
-                            "rulePriority": 2,
-                            "description": "Keep recent images only",
-                            "selection": {
-                                "tagStatus": aws.ecr.LifecyclePolicyTagStatus.ANY,
-                                "countType": aws.ecr.LifecyclePolicyCountType.IMAGE_COUNT_MORE_THAN,
-                                "countNumber": ECR_IMAGE_LIMIT,
-                            },
-                            "action": {
-                                "type": aws.ecr.LifecyclePolicyActionType.EXPIRE
-                            },
-                        },
-                    ]
-                }
-            ),
-            opts=child,
-        )
+        self.repositories = {
+            key: repository(key, repository_name=repository_name, opts=child)
+            for key, repository_name in args.repository_names.items()
+        }
 
         self.deploy_role = aws.iam.Role(
             f"{name}-deploy-role",
@@ -262,10 +272,12 @@ class ImageDelivery(pulumi.ComponentResource):
         aws.iam.RolePolicy(
             f"{name}-deploy-policy",
             role=self.deploy_role.name,
-            policy=_deploy_policy(args, self.repository.arn),
+            policy=_deploy_policy(
+                args, [ecr.arn for ecr in self.repositories.values()]
+            ),
             opts=child,
         )
 
         self.register_outputs(
-            {"repository": self.repository, "deploy_role": self.deploy_role}
+            {"repositories": self.repositories, "deploy_role": self.deploy_role}
         )

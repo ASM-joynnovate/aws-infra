@@ -358,13 +358,13 @@ ECS는 종료된 consumer 컨테이너를 다시 시작하지 않으므로 dev a
 |---|---|---|---|---|
 | `upload-confirmation` | consumer | S3 Object Created 이벤트 | 데이터 버킷의 EventBridge rule | 60초 |
 | `parrot-sound-detection` | 앵무새 소리 판별 함수 | 명령 `audio.detect_parrot` | consumer | 360초 |
-| `mimicry-judgment` | 모사 판정 함수 | 명령 `audio.judge_mimic` | consumer | 720초 |
+| `mimicry-judgment` | 모사 판정 함수 | 명령 `audio.judge_mimic` | consumer | 1,800초 |
 | `judgment-result` | consumer | 이벤트 `audio.parrot_detected`, `audio.mimic_judged` | 앵무새 소리 판별 함수, 모사 판정 함수 | 30초 |
 | `notification` | consumer | 명령 `notification.send` | api, consumer | 30초 |
 | `withdrawal` | consumer | 명령 `withdrawal.process` | api, consumer | 300초 |
 | `periodic-command` | consumer | 명령 `withdrawal.dispatch`, `session.check_heartbeats` | 1분 주기 스케줄 | 30초 |
 
-`parrot-sound-detection`의 360초는 앵무새 소리 판별 함수 제한 시간 60초의 6배이고, `mimicry-judgment`의 720초는 모사 판정 함수 제한 시간 120초의 6배입니다.
+`parrot-sound-detection`의 360초는 앵무새 소리 판별 함수 제한 시간 60초의 6배이고, `mimicry-judgment`의 1,800초는 모사 판정 함수 제한 시간 300초의 6배입니다.
 함수 제한 시간의 6배는 AWS가 SQS 트리거에 권장하는 최소값입니다.
 consumer는 `parrot-sound-detection-dlq`와 `mimicry-judgment-dlq`도 읽어 앵무새 소리 판정이나 단어 모사 판정에 실패한 소리를 failed로 표시합니다.
 메시지 type은 `<대상>.<동사>` 형태이고 명령은 명령형으로, 이벤트는 과거형으로 짓습니다.
@@ -434,7 +434,7 @@ ECR 저장소 정책은 Pulumi가 관리하지 않습니다.
 | 패키지 | 컨테이너 이미지 | 컨테이너 이미지 |
 | 아키텍처 | arm64 | arm64 |
 | memory | 4096MB | 4096MB |
-| 제한 시간 | 60초 | 120초 |
+| 제한 시간 | 60초 | 300초 |
 | VPC | X | X |
 | 이미지 태그 | `<env>-bootstrap` | `<env>-bootstrap` |
 | 로그 그룹 | `/aws/lambda/jn-buddybird-parrot-detection-<env>`, 30일 보관 | `/aws/lambda/jn-buddybird-mimic-judgment-<env>`, 30일 보관 |

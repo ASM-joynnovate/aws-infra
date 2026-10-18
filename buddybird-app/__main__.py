@@ -64,7 +64,7 @@ AUDIO_AI_FUNCTIONS = {
         "batch_size": 10,
     },
     "mimic-judgment": {
-        "timeout": 120,
+        "timeout": 300,
         "object_keys": ["user/*/session/*", "user/*/word/*", "preset/*"],
         "request_queue": MIMICRY_JUDGMENT,
         "batch_size": 1,

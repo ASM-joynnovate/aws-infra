@@ -480,6 +480,7 @@ class AudioAi(pulumi.ComponentResource):
             child, pulumi.ResourceOptions(delete_before_replace=True)
         )
         request_queue = args.queues[PARROT_SOUND_DETECTION]
+        mimicry_queue = args.queues[MIMICRY_JUDGMENT]
         result_queue = args.queues[JUDGMENT_RESULT]
 
         logs = log_group(
@@ -514,7 +515,11 @@ class AudioAi(pulumi.ComponentResource):
                         resources=[
                             pulumi.Output.format(
                                 "{0}/user/*/session/*", args.data_bucket.arn
-                            )
+                            ),
+                            pulumi.Output.format(
+                                "{0}/user/*/word/*", args.data_bucket.arn
+                            ),
+                            pulumi.Output.format("{0}/preset/*", args.data_bucket.arn),
                         ],
                     ),
                     GetPolicyDocumentStatementArgs(
@@ -524,7 +529,7 @@ class AudioAi(pulumi.ComponentResource):
                             "sqs:DeleteMessage",
                             "sqs:GetQueueAttributes",
                         ],
-                        resources=[request_queue.arn],
+                        resources=[request_queue.arn, mimicry_queue.arn],
                     ),
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
@@ -573,6 +578,20 @@ class AudioAi(pulumi.ComponentResource):
             ),
         )
 
+        aws.lambda_.EventSourceMapping(
+            f"{name}-{MIMICRY_JUDGMENT}-event-source-mapping",
+            event_source_arn=mimicry_queue.arn,
+            function_name=function.arn,
+            batch_size=1,
+            function_response_types=["ReportBatchItemFailures"],
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=args.maximum_concurrency
+            ),
+            opts=pulumi.ResourceOptions.merge(
+                child, pulumi.ResourceOptions(depends_on=[policy])
+            ),
+        )
+
         self.register_outputs({})
 
 
@@ -612,6 +631,10 @@ def _container(
             {
                 "name": "SQS_PARROT_SOUND_DETECTION_DLQ_URL",
                 "value": a["parrot_sound_detection_dlq_url"],
+            },
+            {
+                "name": "SQS_MIMICRY_JUDGMENT_DLQ_URL",
+                "value": a["mimicry_judgment_dlq_url"],
             },
         ],
         "secrets": [
@@ -837,6 +860,7 @@ class Api(pulumi.ComponentResource):
                 resources=[
                     *[args.queues[q].arn for q in CONSUMER_RECEIVE_QUEUES],
                     args.dead_letter_queues[PARROT_SOUND_DETECTION].arn,
+                    args.dead_letter_queues[MIMICRY_JUDGMENT].arn,
                 ],
             ),
             GetPolicyDocumentStatementArgs(
@@ -897,6 +921,7 @@ class Api(pulumi.ComponentResource):
             parrot_sound_detection_dlq_url=args.dead_letter_queues[
                 PARROT_SOUND_DETECTION
             ].url,
+            mimicry_judgment_dlq_url=args.dead_letter_queues[MIMICRY_JUDGMENT].url,
         )
 
         def api_container(a: dict) -> dict:

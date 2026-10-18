@@ -115,6 +115,7 @@ def _pulumi_policy(account_id, state_bucket_arn, secrets_key_arn):
                     "iam:ListAttachedRolePolicies",
                     "iam:ListRolePolicies",
                     "iam:GetInstanceProfile",
+                    "iam:ListInstanceProfilesForRole",
                 ],
                 resources=["*"],
             ),

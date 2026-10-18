@@ -12,7 +12,7 @@ buddybird의 dev와 prod 환경이 함께 사용하는 ECR 저장소, 이미지 
 | 파일 | 역할 |
 |---|---|
 | `__main__.py` | 상수, 컴포넌트 조립, 출력값 |
-| `deploy.py` | `ImageDelivery` 컴포넌트 |
+| `deploy.py` | `ImageDelivery` 컴포넌트, ECR 저장소와 라이프사이클 정책을 만드는 `repository` 함수 |
 | `data.py` | `DbNetwork` 컴포넌트 |
 | `oidc.py` | GitHub OIDC 신뢰 정책 |
 
@@ -26,6 +26,8 @@ buddybird의 dev와 prod 환경이 함께 사용하는 ECR 저장소, 이미지 
 | `ImageDelivery` | `api`, `backoffice-frontend`, `mbti-web`, `audio-ai` | ECR 저장소, 라이프사이클 정책, 배포 역할과 정책 |
 | `DbNetwork` | `db-network` | RDS 서브넷 그룹 |
 
+`audio-ai`는 배포 역할 하나에 ECR 저장소 `jn-buddybird-parrot-detection`, `jn-buddybird-mimic-judgment`를 둡니다.
+이전 함수가 사용하던 `jn-buddybird-audio-ai` 저장소는 `repository` 함수로 `audio-ai` 컴포넌트 아래에 따로 만듭니다.
 ECR 저장소의 설정과 배포 역할의 신뢰 정책, 권한은 `buddybird-app.md`의 서비스별 절에 있습니다.
 
 ## 환경 공유 기준
@@ -46,7 +48,8 @@ ECR 저장소의 설정과 배포 역할의 신뢰 정책, 권한은 `buddybird-
 | `api_repository_url` | api task definition의 이미지 |
 | `backoffice_frontend_repository_url` | backoffice frontend task definition의 이미지 |
 | `mbti_web_repository_url` | mbti web task definition의 이미지 |
-| `audio_ai_repository_url` | audio-ai Lambda 함수의 이미지 |
+| `parrot_detection_repository_url` | 앵무새 소리 판별 Lambda 함수의 이미지 |
+| `mimic_judgment_repository_url` | 모사 판정 Lambda 함수의 이미지 |
 | `db_subnet_group_name` | RDS 인스턴스 |
 | `api_deploy_role_arn` | `buddybird-api` 레포지토리의 GitHub Actions |
 | `backoffice_frontend_deploy_role_arn` | `buddybird-backoffice-frontend` 레포지토리의 GitHub Actions |

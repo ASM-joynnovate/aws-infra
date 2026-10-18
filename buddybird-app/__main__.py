@@ -5,7 +5,12 @@ import pulumi_aws as aws
 
 from data import LOCAL_CORS_ORIGINS, ROOT_DOMAIN, data_bucket_name
 from edge import Landing, LandingArgs, MbtiCdn, MbtiCdnArgs
-from messaging import Messaging, MessagingArgs
+from messaging import (
+    MIMICRY_JUDGMENT,
+    PARROT_SOUND_DETECTION,
+    Messaging,
+    MessagingArgs,
+)
 from schedule import NightlyStop, NightlyStopArgs
 from service import (
     DEFAULT_CAPACITY,
@@ -50,6 +55,21 @@ APP_SECRET_CONFIG_KEYS = {
 }
 
 BOOTSTRAP_IMAGE_TAG = "bootstrap"
+
+AUDIO_AI_FUNCTIONS = {
+    "parrot-detection": {
+        "timeout": 60,
+        "object_keys": ["user/*/session/*"],
+        "request_queue": PARROT_SOUND_DETECTION,
+        "batch_size": 10,
+    },
+    "mimic-judgment": {
+        "timeout": 120,
+        "object_keys": ["user/*/session/*", "user/*/word/*", "preset/*"],
+        "request_queue": MIMICRY_JUDGMENT,
+        "batch_size": 1,
+    },
+}
 
 INFRA_STACK = "organization/joynnovate-infra/prod"
 SHARED_STACK = "organization/buddybird-shared/prod"
@@ -183,20 +203,25 @@ if backoffice_frontend_settings is not None:
     )
 
 if audio_ai_settings is not None:
-    AudioAi(
-        f"audio-ai-{env}",
-        AudioAiArgs(
-            env=env,
-            function_name=f"{PREFIX}-audio-ai-{env}",
-            image=pulumi.Output.concat(
-                shared.require_output("audio_ai_repository_url"), f":{env}-bootstrap"
+    for function, function_settings in AUDIO_AI_FUNCTIONS.items():
+        AudioAi(
+            f"{function}-{env}",
+            AudioAiArgs(
+                env=env,
+                function_name=f"{PREFIX}-{function}-{env}",
+                image=pulumi.Output.concat(
+                    shared.require_output(
+                        f"{function.replace('-', '_')}_repository_url"
+                    ),
+                    f":{env}-bootstrap",
+                ),
+                data_bucket=api.data.bucket,
+                queues=messaging.queues,
+                maximum_concurrency=audio_ai_settings["maximumConcurrency"],
+                sentry_dsn=config.require_secret("audioAiSentryDsn"),
+                **function_settings,
             ),
-            data_bucket=api.data.bucket,
-            queues=messaging.queues,
-            maximum_concurrency=audio_ai_settings["maximumConcurrency"],
-            sentry_dsn=config.require_secret("audioAiSentryDsn"),
-        ),
-    )
+        )
 
 if nightly_stop_enabled:
     NightlyStop(

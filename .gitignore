@@ -401,5 +401,6 @@ $RECYCLE.BIN/
 *.lnk
 
 .idea/
+.wrangler/
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,visualstudiocode,windows,linux,jetbrains,python,venv,dotenv,pulumi

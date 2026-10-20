@@ -6,5 +6,7 @@ config:
       Product: buddybird
       ManagedBy: pulumi
       Team: joynnovate
+  cloudflare:apiToken:
+    secure: v1:G1A9rHlyxqPKNasa:R0sn/SJt+kPacKv729Me52gEsPBa+keVg+F7i89Ruxn9snjSkLF2vqtX352gLT4LGBgOTERiaCPrG6y2lbX2Fm0nt6dI
 secretsprovider: awskms://alias/jn-pulumi-secrets?region=ap-northeast-2
 encryptedkey: AQICAHjo9WNG+uH3mklUd1LRM6/I0PC/GvT2vfK9gYdSsJB6mgFtm8h9JPTKgjyfBUkX9CzCAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMHvFOY3C3HM6AvIA7AgEQgDu9Self8m3WA7fucltQHY/XoVEVoBDIs2OURW3sEkB7Chp1a4Spj6HAgAHx56spAcbXvDWUNElg7sqIDw==

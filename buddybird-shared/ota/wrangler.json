@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "jn-buddybird-ota",
+  "main": "./index.js",
+  "compatibility_date": "2026-08-13",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "cache": {
+    "enabled": true
+  },
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "__HOT_UPDATER_D1_DATABASE_ID__",
+      "database_name": "__HOT_UPDATER_D1_DATABASE_NAME__"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "__HOT_UPDATER_BUCKET_NAME__"
+    }
+  ],
+  "vars": {
+    "ACCOUNT_ID": "__HOT_UPDATER_ACCOUNT_ID__",
+    "BUCKET_NAME": "__HOT_UPDATER_BUCKET_NAME__"
+  },
+  "account_id": "__HOT_UPDATER_ACCOUNT_ID__"
+}

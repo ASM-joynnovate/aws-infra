@@ -11,6 +11,7 @@ from deploy import (
     ImageDeliveryArgs,
     repository,
 )
+from ota import Ota, OtaArgs
 
 API_PREFIX = "jn-buddybird-api"
 BACKOFFICE_FRONTEND_PREFIX = "jn-buddybird-backoffice-frontend"
@@ -22,6 +23,8 @@ INFRA_STACK = "organization/joynnovate-infra/prod"
 
 region = aws.get_region().region
 account_id = aws.get_caller_identity().account_id
+
+config = pulumi.Config()
 
 infra = pulumi.StackReference(INFRA_STACK)
 
@@ -96,6 +99,14 @@ db_network = DbNetwork(
     DbNetworkArgs(subnet_group_name=API_PREFIX, subnet_ids=private_subnet_ids),
 )
 
+ota = Ota(
+    "ota",
+    OtaArgs(
+        r2_access_key_id=config.get_secret("otaR2AccessKeyId"),
+        r2_secret_access_key=config.get_secret("otaR2SecretAccessKey"),
+    ),
+)
+
 pulumi.export("api_repository_url", api_delivery.repositories["api"].repository_url)
 pulumi.export(
     "backoffice_frontend_repository_url",
@@ -121,3 +132,7 @@ pulumi.export(
 pulumi.export("mbti_web_deploy_role_arn", mbti_web_delivery.deploy_role.arn)
 pulumi.export("audio_ai_deploy_role_arn", audio_ai_delivery.deploy_role.arn)
 pulumi.export("db_subnet_group_name", db_network.subnet_group.name)
+pulumi.export("ota_account_id", ota.account_id)
+pulumi.export("ota_d1_database_id", ota.database.id)
+pulumi.export("ota_d1_database_name", ota.database.name)
+pulumi.export("ota_r2_bucket_name", ota.bucket.name)

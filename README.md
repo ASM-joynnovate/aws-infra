@@ -19,7 +19,7 @@ buddybird 서비스의 Amazon Web Services(AWS) 인프라를 Pulumi로 관리한
 | --- | --- | --- | --- |
 | `joynnovate-bootstrap` | `bootstrap/` | - state 버킷<br>- Key Management Service(KMS) 키<br>- OpenID Connect(OIDC) provider<br>- 지속적 통합(Continuous Integration, CI) 역할 | 사람 |
 | `joynnovate-infra` | `infra/` | - Virtual Private Cloud(VPC)<br>- Elastic Container Service(ECS) 클러스터<br>- Application Load Balancer(ALB)<br>- AWS Certificate Manager(ACM) 인증서<br>- 로그 버킷<br>- 예산 알림 | GitHub Actions |
-| `buddybird-shared` | `buddybird-shared/` | - Elastic Container Registry(ECR)<br>- 이미지 배포 역할<br>- Relational Database Service(RDS) 서브넷 그룹 | GitHub Actions |
+| `buddybird-shared` | `buddybird-shared/` | - Elastic Container Registry(ECR)<br>- 이미지 배포 역할<br>- Relational Database Service(RDS) 서브넷 그룹<br>- Cloudflare Worker, D1, R2 | GitHub Actions |
 | `buddybird-app` | `buddybird-app/` | - ECS 서비스<br>- RDS<br>- Simple Storage Service(S3) 버킷<br>- CloudFront<br>- 랜딩 배포 역할 | GitHub Actions |
 
 설계 문서는 `docs/` 아래에 프로젝트 이름으로 있다.
@@ -40,6 +40,7 @@ buddybird 서비스의 Amazon Web Services(AWS) 인프라를 Pulumi로 관리한
 | 인프라를 적용하는 역할 | `joynnovate-bootstrap` |
 | 이미지를 배포하는 역할 | `buddybird-shared` |
 | 랜딩을 배포하는 역할 | `buddybird-app` |
+| 모바일 앱 OTA 서버 | `buddybird-shared` |
 
 랜딩 배포 역할은 랜딩 버킷과 CloudFront의 ARN을 직접 참조하기 때문에 `buddybird-app`에 둔다.
 
@@ -68,7 +69,7 @@ Pulumi가 스택 secret을 KMS 키로 암호화한다.
 
 | 스택 secret | 보관 스택 |
 | --- | --- |
-| `cloudflare:apiToken` | - `joynnovate-infra`<br>- `buddybird-app` |
+| `cloudflare:apiToken` | - `joynnovate-infra`<br>- `buddybird-shared`<br>- `buddybird-app` |
 | `backofficePassword` | `buddybird-app` |
 | `readonlyDbPassword` | `buddybird-app` |
 | `supabaseSecretKey` | `buddybird-app` |
@@ -80,6 +81,8 @@ Pulumi가 스택 secret을 KMS 키로 암호화한다.
 | `sentryDsn` | `buddybird-app` |
 | `sentryApiToken` | `buddybird-app` |
 | `cloudflareTurnApiToken` | `buddybird-app` |
+| `otaR2AccessKeyId` | `buddybird-shared` |
+| `otaR2SecretAccessKey` | `buddybird-shared` |
 
 `backofficePassword`와 `readonlyDbPassword`는 두 스택이 같은 값을 사용한다.
 
@@ -179,6 +182,7 @@ Domain Name System(DNS) 레코드의 관리 주체는 다음과 같다.
 | 서비스 호스트명 CNAME | `buddybird-app` |
 
 모든 레코드에서 Cloudflare 프록시를 끈다.
+`ota.buddybird.xyz`는 Worker Custom Domain이 만든 레코드이고 Cloudflare가 관리한다.
 프록시를 켜면 문제가 두 가지 생긴다.
 
 - ACM이 검증 값을 읽지 못함

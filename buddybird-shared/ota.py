@@ -41,6 +41,7 @@ class Ota(pulumi.ComponentResource):
             f"{name}-database",
             account_id=self.account_id,
             name=OTA_NAME,
+            read_replication=cloudflare.D1DatabaseReadReplicationArgs(mode="disabled"),
             opts=pulumi.ResourceOptions(parent=self),
         )
 

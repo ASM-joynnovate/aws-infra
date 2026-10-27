@@ -356,7 +356,7 @@ ECS는 종료된 consumer 컨테이너를 다시 시작하지 않으므로 dev a
 
 | 큐 | 읽는 프로세스 | 메시지 | 보내는 쪽 | visibility timeout |
 |---|---|---|---|---|
-| `upload-confirmation` | consumer | S3 Object Created 이벤트 | 데이터 버킷의 EventBridge rule | 60초 |
+| `upload-confirmation` | consumer | S3 Object Created 이벤트 | 데이터 버킷의 EventBridge rule | 300초 |
 | `parrot-sound-detection` | 앵무새 소리 판별 함수 | 명령 `audio.detect_parrot` | consumer | 360초 |
 | `mimicry-judgment` | 모사 판정 함수 | 명령 `audio.judge_mimic` | consumer | 1,800초 |
 | `judgment-result` | consumer | 이벤트 `audio.parrot_detected`, `audio.mimic_judged` | 앵무새 소리 판별 함수, 모사 판정 함수 | 30초 |

@@ -324,12 +324,10 @@ consumer는 앵무새 발성으로 판정된 소리의 태그를 `retention=90d`
 
 | 역할 | 대상 | 액션 |
 |---|---|---|
-| api | 데이터 버킷 객체 | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:PutObjectTagging` |
-| api | `notification`, `withdrawal` 큐 | `sqs:SendMessage` |
-| api | KVS 채널 `jn-buddybird-<env>-*` | 시그널링 채널 생성, 조회, 삭제와 `ConnectAsMaster`, `ConnectAsViewer`, `GetIceServerConfig` |
+| api | 데이터 버킷 객체 | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:DeleteObjectVersion`, `s3:PutObjectTagging` |
+| api | `parrot-sound-detection`, `mimicry-judgment`, `notification`, `withdrawal` 큐 | `sqs:SendMessage` |
 | consumer | `upload-confirmation`, `judgment-result`, `notification`, `withdrawal`, `periodic-command`, `parrot-sound-detection-dlq`, `mimicry-judgment-dlq` 큐 | 수신, 삭제, visibility 변경, 속성 조회 |
-| consumer | `parrot-sound-detection`, `mimicry-judgment`, `notification`, `withdrawal` 큐 | `sqs:SendMessage` |
-| consumer | 데이터 버킷 객체 | api와 같음 |
+| consumer | 데이터 버킷 객체와 전송 큐 | api와 같음 |
 
 dev는 api와 consumer가 task 하나에서 실행되므로 api task role이 consumer 권한도 갖습니다.
 

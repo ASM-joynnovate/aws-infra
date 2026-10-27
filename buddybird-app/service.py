@@ -46,14 +46,18 @@ CAPACITY_STRATEGIES = {
     "on-demand-with-spot": [("FARGATE", 1, 0), ("FARGATE_SPOT", 0, 1)],
 }
 
-S3_OBJECT_ACTIONS = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+S3_OBJECT_ACTIONS = [
+    "s3:GetObject",
+    "s3:PutObject",
+    "s3:DeleteObject",
+    "s3:DeleteObjectVersion",
+]
 S3_TAGGING_ACTIONS = ["s3:PutObjectTagging"]
 
 MERGED_TASK_MEMORY = "1024"
 CONSUMER_CONTAINER_NAME = "consumer"
 CONSUMER_COMMAND = ["python", "-m", "app.consumer"]
 
-API_SEND_QUEUES = [NOTIFICATION, WITHDRAWAL]
 CONSUMER_RECEIVE_QUEUES = [
     UPLOAD_CONFIRMATION,
     JUDGMENT_RESULT,
@@ -61,7 +65,7 @@ CONSUMER_RECEIVE_QUEUES = [
     WITHDRAWAL,
     PERIODIC_COMMAND,
 ]
-CONSUMER_SEND_QUEUES = [
+SEND_QUEUES = [
     PARROT_SOUND_DETECTION,
     MIMICRY_JUDGMENT,
     NOTIFICATION,
@@ -72,16 +76,6 @@ SQS_RECEIVE_ACTIONS = [
     "sqs:DeleteMessage",
     "sqs:ChangeMessageVisibility",
     "sqs:GetQueueAttributes",
-]
-
-KVS_CHANNEL_ACTIONS = [
-    "kinesisvideo:CreateSignalingChannel",
-    "kinesisvideo:DescribeSignalingChannel",
-    "kinesisvideo:GetSignalingChannelEndpoint",
-    "kinesisvideo:GetIceServerConfig",
-    "kinesisvideo:ConnectAsMaster",
-    "kinesisvideo:ConnectAsViewer",
-    "kinesisvideo:DeleteSignalingChannel",
 ]
 
 APP_SECRET_ENV_VARS = {
@@ -671,7 +665,6 @@ class ApiArgs:
     task_security_group_id: pulumi.Input[str]
     cluster_arn: pulumi.Input[str]
     listener_arn: pulumi.Input[str]
-    name_prefix: str
     queues: Mapping[str, aws.sqs.Queue]
     dead_letter_queues: Mapping[str, aws.sqs.Queue]
     dns_target: pulumi.Input[str] | None = None
@@ -810,27 +803,7 @@ class Api(pulumi.ComponentResource):
                     GetPolicyDocumentStatementArgs(
                         effect=PolicyStatementEffect.ALLOW,
                         actions=["sqs:SendMessage"],
-                        resources=[args.queues[q].arn for q in API_SEND_QUEUES],
-                    )
-                ]
-            ).json,
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        aws.iam.RolePolicy(
-            f"{name}-task-role-kvs",
-            role=task.name,
-            policy=aws.iam.get_policy_document_output(
-                statements=[
-                    GetPolicyDocumentStatementArgs(
-                        effect=PolicyStatementEffect.ALLOW,
-                        actions=KVS_CHANNEL_ACTIONS,
-                        resources=[
-                            (
-                                f"arn:aws:kinesisvideo:{args.region}:{args.account_id}"
-                                f":channel/{args.name_prefix}-*/*"
-                            )
-                        ],
+                        resources=[args.queues[q].arn for q in SEND_QUEUES],
                     )
                 ]
             ).json,
@@ -850,7 +823,7 @@ class Api(pulumi.ComponentResource):
             GetPolicyDocumentStatementArgs(
                 effect=PolicyStatementEffect.ALLOW,
                 actions=["sqs:SendMessage"],
-                resources=[args.queues[q].arn for q in CONSUMER_SEND_QUEUES],
+                resources=[args.queues[q].arn for q in SEND_QUEUES],
             ),
             GetPolicyDocumentStatementArgs(
                 effect=PolicyStatementEffect.ALLOW,

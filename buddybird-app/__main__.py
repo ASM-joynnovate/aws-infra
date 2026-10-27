@@ -172,7 +172,6 @@ api = Api(
             LOCAL_CORS_ORIGINS if local_data_bucket_enabled else None
         ),
         capacity=api_settings.get("capacity", DEFAULT_CAPACITY),
-        name_prefix=f"{PREFIX}-{env}",
         queues=messaging.queues,
         dead_letter_queues=messaging.dead_letter_queues,
         consumer_separate=consumer_separate,

@@ -43,6 +43,7 @@ APP_ENVIRONMENT_CONFIG_KEYS = {
 }
 APP_SECRET_CONFIG_KEYS = {
     "backofficePassword": "backoffice_password",
+    "backofficeReadonlyPassword": "backoffice_readonly_password",
     "supabaseSecretKey": "supabase_secret_key",
     "oauthCredentialsKey": "oauth_credentials_key",
     "googleClientSecret": "google_client_secret",

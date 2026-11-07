@@ -71,6 +71,7 @@ Pulumi가 스택 secret을 KMS 키로 암호화한다.
 | --- | --- |
 | `cloudflare:apiToken` | - `joynnovate-infra`<br>- `buddybird-shared`<br>- `buddybird-app` |
 | `backofficePassword` | `buddybird-app` |
+| `backofficeReadonlyPassword` | `buddybird-app` |
 | `readonlyDbPassword` | `buddybird-app` |
 | `supabaseSecretKey` | `buddybird-app` |
 | `oauthCredentialsKey` | `buddybird-app` |

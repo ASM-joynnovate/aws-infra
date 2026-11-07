@@ -834,6 +834,7 @@ aws ecs update-service --cluster jn-cluster --service <서비스> \
 ```bash
 pulumi config set --stack <스택> --secret cloudflare:apiToken <토큰>
 pulumi config set --stack <스택> --secret backofficePassword <비밀번호>
+pulumi config set --stack <스택> --secret backofficeReadonlyPassword <비밀번호>
 pulumi config set --stack <스택> --secret readonlyDbPassword <비밀번호>
 pulumi config set --stack <스택> supabaseUrl <Supabase 프로젝트 URL>
 pulumi config set --stack <스택> supabasePublishableKey <publishable key>

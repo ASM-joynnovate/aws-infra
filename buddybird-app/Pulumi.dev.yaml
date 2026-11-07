@@ -51,3 +51,5 @@ config:
   buddybird-app:cloudflareTurnKeyId: 07b2cf0cdd498732bb474897cd67c4e3
   buddybird-app:cloudflareTurnApiToken:
     secure: v1:vTuYwVkvSKQhErmo:3nZ+9jkDIhXKvItcnrvLTECBJ0HR2KSVV4nFLuhI5/9YwC/kUQieHfJrNm4ZvfUGBWf1qNGmmrRuHKgCoDUKN2RWne5esL/BPKud2Oxxep0=
+  buddybird-app:backofficeReadonlyPassword:
+    secure: v1:FJSL+wZD6rdT8rB1:gcWnZSajlrEE535tMSMFRP4bhj4K1KKwrP1XUFFF3MHC

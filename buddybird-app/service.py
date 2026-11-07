@@ -80,6 +80,7 @@ SQS_RECEIVE_ACTIONS = [
 
 APP_SECRET_ENV_VARS = {
     "backoffice_password": "BACKOFFICE_PASSWORD",
+    "backoffice_readonly_password": "BACKOFFICE_READONLY_PASSWORD",
     "supabase_secret_key": "SUPABASE_SECRET_KEY",
     "oauth_credentials_key": "OAUTH_CREDENTIALS_KEY",
     "google_client_secret": "GOOGLE_CLIENT_SECRET",

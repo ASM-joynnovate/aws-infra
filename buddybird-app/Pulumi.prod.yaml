@@ -22,7 +22,7 @@ config:
   buddybird-app:backofficeFrontend:
     subdomain: backoffice
     priority: 30
-    capacity: spot
+    capacity: on-demand
   buddybird-app:mbtiWeb:
     subdomain: mbti
     priority: 50
